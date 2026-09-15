@@ -17,6 +17,8 @@ vm.runInNewContext(source, {
   window,
   document,
   navigator: {language: 'en'},
+  location: {search: ''},
+  URLSearchParams,
   CustomEvent: function CustomEvent(name) { this.type = name; },
 });
 

@@ -8,6 +8,50 @@ defines one `dte_selected_theme` descriptor.
 This repository contains the engine only. It does not contain downstream
 themes, artwork, generated theme atlases, or product-specific animation labs.
 
+![Localized WASM theme preview with live state and gesture controls](docs/images/wasm-preview-zh.png)
+
+## Highlights
+
+### Same renderer in firmware and the browser
+
+The preview builder compiles the engine, rasterizer and selected theme C sources
+to both a native library and WASM. The generated HTML is self-contained and can
+run offline. Live controls inject WPM, layers, endpoints, modifiers, two/three
+battery layouts and gestures without a keyboard attached. The preview shell is
+localized in English, Simplified Chinese and Japanese; text drawn inside the
+simulated display remains entirely theme-owned.
+
+The parity replay compares native and WASM RGB565 hashes across three display
+sizes. It also verifies long-press de-duplication and that fixed spatial Bayer
+dithering does not shimmer between stationary frames.
+
+![English WASM preview showing the engine controls](docs/images/wasm-preview-en.png)
+
+### Animation without a fixed player
+
+A theme owns its animation state machine. Its `render(snapshot, now, pixels)`
+callback returns nonzero while animation remains active; the host schedules the
+next absolute frame deadline on ZMK's display work queue. `now` is explicit, so
+native tests, WASM and firmware can replay the same timeline deterministically.
+Optional animation selection, duration and forced-redraw hooks are available to
+preview/settings adapters without making the engine interpret theme semantics.
+
+The configured 60Hz value is a logical deadline, not a claim that every SPI
+panel can present 60 physical frames per second. Retained tile damage, packed
+rectangles and direct RGB565 row bands let themes trade memory, draw cost and
+transport cost explicitly.
+
+### Touch normalization
+
+The engine accepts pointer samples through `dte_touch()` and emits tap, long
+press and four directional swipes. `dte_touch_hint()` merges controller-provided
+gesture hints with software recognition once per contact, preventing a hardware
+swipe followed by a duplicate software swipe. Input callbacks enqueue samples;
+theme callbacks and drawing remain serialized on the display work queue.
+
+See [the API manual](docs/api.md) for descriptor, snapshot, animation, touch,
+raster and transport contracts.
+
 ## Current contract
 
 The bootstrap ABI supports one compile-time theme, 240x240, 240x280 and
