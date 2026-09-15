@@ -1,0 +1,6 @@
+name: zmk-lcd-dongle-engine
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    board_root: .

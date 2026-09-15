@@ -1,0 +1,7 @@
+{
+  "id": "minimal",
+  "default_variant": "default",
+  "variants": {
+    "default": ["src/minimal_theme.c"]
+  }
+}

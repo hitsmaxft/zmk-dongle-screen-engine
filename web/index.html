@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LCD Dongle Theme Preview</title>
+<style>
+:root{color-scheme:dark;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#111417;color:#e8ebed}*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:40px 28px}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #343b40;padding-bottom:22px}h1{font-size:23px;font-weight:500;letter-spacing:.02em;margin:4px 0}small,.muted{color:#8e9aa3;font-size:12px;line-height:1.7}.layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(240px,1fr);gap:48px;margin:40px 0}.device-stage{display:grid;place-items:center;min-height:380px;background:#090b0d;border:1px solid #292e32;border-radius:12px}.screen{width:420px;max-width:92%;border:7px solid #24282b;border-radius:44px;overflow:hidden;background:#050709;box-shadow:0 16px 30px #0005}canvas{width:100%;height:auto;display:block;touch-action:none;image-rendering:auto}.controls{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}button,select{background:#20272c;color:#dfe5e8;border:1px solid #424c53;border-radius:5px;padding:9px 12px;cursor:pointer;font:inherit}button:active{transform:translateY(1px)}button:hover{border-color:#a2a9ad}button.active{border-color:#b75e62;color:#faf6f6}label{display:block;color:#aab4ba;font-size:12px;margin:18px 0 6px}input[type=range]{width:100%;accent-color:#bd5e62}output{float:right;color:#e8ebed;font-variant-numeric:tabular-nums}fieldset{border:0;padding:0;margin:20px 0}legend{color:#94a1aa;font-size:12px;margin-bottom:4px}footer{border-top:1px solid #343b40;padding-top:20px;display:flex;justify-content:space-between;gap:20px;color:#89959e;font-size:12px}#status{min-height:20px;color:#c5b29a}#trace{font:11px ui-monospace,monospace;line-height:1.8;color:#8f9ea8;white-space:pre-wrap}.hint{max-width:500px;line-height:1.8;font-size:12px;color:#95a2aa}#error{color:#ffa3a3}a{color:#b8c5ce}@media(max-width:740px){main{padding:24px 16px}.layout{grid-template-columns:1fr;gap:20px;margin-top:24px}.device-stage{min-height:330px}header small{display:none}footer{display:block}}
+.layout>*,.device-stage{min-width:0}select{max-width:100%}
+.screen{width:min(420px,calc(100vw - 90px));max-width:100%}
+</style></head><body><main>
+<header><div><small>LCD DONGLE ENGINE / THEME PREVIEW</small><h1>Minimal theme</h1></div><small>RGB565 · shared C renderer · 60Hz timeline</small></header>
+<div class="layout"><section><div class="device-stage"><div class="screen"><canvas id="screen" width="280" height="240" aria-label="LCD dongle theme preview"></canvas></div></div>
+<div class="controls"><button id="gauge">Default</button><button id="information">Swipe left</button><button id="style">Tap</button><button id="page">Swipe up</button></div>
+<p class="hint">This local preview drives the same C state, gesture and RGB565 render path used by firmware. It does not connect to a keyboard.</p><div id="status">Loading theme…</div><div id="error" role="alert"></div></section>
+<aside><small>PREVIEW CONTROLS</small>
+<label for="resolution">逻辑分辨率</label><select id="resolution"><option value="280,240">280 × 240 · landscape</option><option value="240,280">240 × 280 · portrait</option><option value="240,240">240 × 240 · square</option></select>
+<label for="wpm">WPM <output id="wpm-value">72</output></label><input id="wpm" type="range" min="0" max="180" value="72">
+<label for="battery-count">电池布局</label><select id="battery-count"><option value="2">两块 · 左 0 / 右 1</option><option value="3" selected>三块 · 左 dongle / 右 0、1</option></select>
+<label for="dongle-battery">Dongle 电池 <output id="dongle-value">93%</output></label><input id="dongle-battery" type="range" min="-1" max="100" value="93">
+<label for="split0-battery">分体 0 电池 <output id="split0-value">87%</output></label><input id="split0-battery" type="range" min="-1" max="100" value="87">
+<label for="split1-battery">分体 1 电池 <output id="split1-value">64%</output></label><input id="split1-battery" type="range" min="-1" max="100" value="64">
+<label for="layer">当前层</label><select id="layer"><option value="0">BASE</option><option value="1">LOWER</option><option value="2">RAISE</option><option value="3">NAV</option></select>
+<label for="endpoint">输出</label><select id="endpoint"><option value="1">USB</option><option value="2">BLE · Profile 2</option><option value="0">未连接</option></select>
+<fieldset><legend>修饰键</legend><div class="controls" id="mods"><button data-mod="1">Ctrl</button><button data-mod="2">Shift</button><button data-mod="4">Alt</button><button data-mod="8">GUI</button></div></fieldset>
+<div class="controls"><button id="disconnect">右手断连</button><button id="unknown">电量未知</button></div>
+<div class="controls"><button id="play">暂停</button><button id="step">单帧 +16.67ms</button><button id="replay">重播演示</button></div>
+<div id="trace"></div><p class="hint">60Hz is the animation timeline, not a claim that a given display transport presents every frame.</p></aside></div>
+<footer><span>One state machine and RGB565 renderer across native, WASM and firmware.</span><span>Engine example</span></footer>
+</main><script>const WASM_BASE64='/*__WASM__*/';
+/*__PREVIEW_JS__*/
+</script></body></html>

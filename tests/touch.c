@@ -1,0 +1,38 @@
+/* SPDX-License-Identifier: MIT */
+#include <assert.h>
+#include <zmk/dongle_theme/theme.h>
+static int calls, last;
+static uint32_t gesture_time;
+static void mount(int w, int h, uint32_t now) { calls=last=0; }
+static void gesture(int kind, uint32_t now) { calls++; last=kind; gesture_time=now; }
+static int render(const struct dte_snapshot *s, uint32_t now, uint16_t *p) { return 0; }
+const struct dte_theme dte_selected_theme={DTE_ABI_VERSION,"test",mount,gesture,render};
+int main(void) {
+  dte_init(280,240);
+  dte_touch(180,120,1,0); dte_touch(90,120,1,40); dte_touch(90,120,0,80);
+  assert(calls==1 && last==DTE_LEFT);
+  dte_init(280,240);
+  dte_touch(120,120,1,0);
+  assert(dte_touch_hint(DTE_LEFT,100));
+  assert(!dte_touch_hint(DTE_LEFT,101));
+  dte_touch(120,120,0,105); /* no release coordinates, must not emit a tap */
+  assert(calls==1 && last==DTE_LEFT);
+  dte_touch(120,120,1,150); dte_touch(120,120,0,200);
+  assert(calls==2 && last==DTE_TAP); /* next contact remains independent */
+  dte_init(280,240);
+  dte_touch(100,100,1,0); dte_render(600);
+  assert(calls==1 && last==DTE_LONG_PRESS);
+  assert(!dte_touch_hint(DTE_LONG_PRESS,610));
+  dte_touch(100,100,0,620); assert(calls==1);
+  dte_init(280,240);
+  dte_touch_hint(DTE_RIGHT,100); dte_touch(0,0,0,110);
+  assert(calls==1 && last==DTE_RIGHT); /* release-only hardware gesture */
+  dte_touch_cancel(); dte_touch(100,100,1,200); dte_touch_cancel();
+  dte_touch(100,100,0,300); assert(calls==1); /* overflow/cancel */
+  dte_init(280,240);
+  dte_touch_at(100,100,1,100,1000);
+  dte_touch_at(100,100,0,150,1600);
+  assert(calls==1 && last==DTE_TAP && gesture_time==1600);
+  /* Classification uses the 50ms physical contact; animation starts at dispatch. */
+  return 0;
+}
