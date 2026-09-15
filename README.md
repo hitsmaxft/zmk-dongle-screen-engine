@@ -1,4 +1,4 @@
-# zmk-lcd-dongle-engine
+# zmk-dongle-screen-engine
 
 A small static theme host and RGB565 renderer for ZMK dongles. It separates
 display ownership, ZMK state projection, touch dispatch and frame transport

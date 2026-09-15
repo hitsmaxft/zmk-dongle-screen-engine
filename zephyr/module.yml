@@ -1,4 +1,4 @@
-name: zmk-lcd-dongle-engine
+name: zmk-dongle-screen-engine
 build:
   cmake: .
   kconfig: Kconfig
