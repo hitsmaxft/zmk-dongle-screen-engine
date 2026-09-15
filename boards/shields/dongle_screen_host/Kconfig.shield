@@ -1,0 +1,2 @@
+config SHIELD_DONGLE_SCREEN_HOST
+    def_bool $(shields_list_contains,dongle_screen_host)

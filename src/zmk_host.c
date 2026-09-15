@@ -43,7 +43,7 @@ static bool startup_ready, startup_visible;
 static int startup_phase;
 static unsigned startup_attempts;
 static uint32_t tile_hash[18 * 18], deadline, last_report, frames;
-#if IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_PACKED_RECTS)
+#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_PACKED_RECTS)
 static uint16_t transfer_pixels[2048] __aligned(4);
 #endif
 static void frame_work_cb(struct k_work *work);
@@ -69,21 +69,21 @@ static void startup_cb(struct k_work *work) {
   if(!startup_ready){startup_ready=true;startup_phase=1;}
   else if(startup_phase==1)startup_phase=2;
   else if(startup_phase==2)startup_phase=0;
-  transfer_failed=IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_DIRECT_RGB565);
+  transfer_failed=IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_DIRECT_RGB565);
   LOG_INF("startup phase=%d",startup_phase);
   frame_work_cb(NULL);
   if(startup_phase==1)
     k_work_reschedule_for_queue(zmk_display_work_q(),&startup_work,
-                                K_MSEC(CONFIG_ZMK_DONGLE_THEME_SPLASH_MS));
+                                K_MSEC(CONFIG_ZMK_DONGLE_SCREEN_SPLASH_MS));
   else if(startup_phase==2)
     k_work_reschedule_for_queue(zmk_display_work_q(),&startup_work,
-                                K_MSEC(CONFIG_ZMK_DONGLE_THEME_DIAL_REVEAL_MS));
+                                K_MSEC(CONFIG_ZMK_DONGLE_SCREEN_DIAL_REVEAL_MS));
 }
 static void reveal_startup(void) {
   if(!startup_ready||startup_visible||transfer_failed)return;
-  set_backlight(CONFIG_ZMK_DONGLE_THEME_BRIGHTNESS);startup_visible=true;
-  LOG_INF("startup full frame sent; backlight=%d%%",CONFIG_ZMK_DONGLE_THEME_BRIGHTNESS);
-  if(IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_DIRECT_RGB565))
+  set_backlight(CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS);startup_visible=true;
+  LOG_INF("startup full frame sent; backlight=%d%%",CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS);
+  if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_DIRECT_RGB565))
     k_work_reschedule_for_queue(zmk_display_work_q(),&startup_repaint_work,K_MSEC(200));
 }
 static void direct_lvgl_flush(lv_display_t *display, const lv_area_t *area, uint8_t *pixels) {
@@ -110,18 +110,18 @@ static bool invalidate_changed(void) {
       if (tile_hash[idx] != hash || transfer_failed) {
         any=true;changed[y/16]|=1u<<(x/16);
         lv_area_t a = {x, y, MIN(x + 15, w - 1), MIN(y + 15, h - 1)};
-        if (IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_DIRECT_RGB565)) rows[y/16]=true;
+        if (IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_DIRECT_RGB565)) rows[y/16]=true;
         else lv_obj_invalidate_area(canvas, &a);
         tile_hash[idx] = hash;
       }
       idx++;
     }
-  if (IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_DIRECT_RGB565)) {
+  if (IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_DIRECT_RGB565)) {
     const struct device *disp=DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
     uint32_t started=k_cycle_get_32();
     bool sent=false;
     transfer_failed=false;
-#if IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_PACKED_RECTS)
+#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_PACKED_RECTS)
     struct dte_dirty_rect rect;
     while(dte_next_dirty_rect(changed,w,h,&rect)) {
       int n=0;
@@ -172,7 +172,7 @@ static void frame_work_cb(struct k_work *work) {
     published_fps_x10=measured_fps_x10;
     stats_deadline=now+500;
   }
-  dte_set_display_stats(CONFIG_ZMK_DONGLE_THEME_BRIGHTNESS,published_fps_x10);
+  dte_set_display_stats(CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS,published_fps_x10);
   dte_set_startup_phase(startup_phase);
   dte_set_layer_name(
       zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(layer)));
@@ -183,7 +183,7 @@ static void frame_work_cb(struct k_work *work) {
   draw_max_us = MAX(draw_max_us, cost);
   draw_count++;
   bool presented=invalidate_changed();
-  if(IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_DIRECT_RGB565)) {
+  if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_DIRECT_RGB565)) {
     reveal_startup();
     if(!startup_visible&&transfer_failed&&++startup_attempts<3)
       k_work_reschedule_for_queue(zmk_display_work_q(),&frame_work,K_MSEC(50));
@@ -215,8 +215,8 @@ static void frame_work_cb(struct k_work *work) {
   }
   if (active) { /* Rational 60Hz grid: 16/17ms, no accumulated 16ms cadence
                    drift. */
-    deadline = ((uint64_t)now * CONFIG_ZMK_DONGLE_THEME_FPS / 1000 + 1) * 1000 /
-               CONFIG_ZMK_DONGLE_THEME_FPS;
+    deadline = ((uint64_t)now * CONFIG_ZMK_DONGLE_SCREEN_FPS / 1000 + 1) * 1000 /
+               CONFIG_ZMK_DONGLE_SCREEN_FPS;
     k_work_reschedule_for_queue(
         zmk_display_work_q(), &frame_work,
         K_MSEC(MAX(1, (int32_t)(deadline - k_uptime_get_32()))));
@@ -428,7 +428,7 @@ static void diagnostic_cb(struct k_work *work) {
   dtr_profile_cycles[0]=dtr_profile_cycles[1]=dtr_profile_cycles[2]=0;
   LOG_INF("animation intervals=%u fps_x10=%u; direct=%d",
           animation_intervals,animation_us?(uint32_t)((uint64_t)animation_intervals*10000000/animation_us):0,
-          IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_DIRECT_RGB565));
+          IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_DIRECT_RGB565));
 #if defined(CONFIG_SOC_NRF52840)
   LOG_INF("clock HFCLKSTAT=0x%08x SPIM3_FREQ=0x%08x ICACHE=0x%08x",
           NRF_CLOCK->HFCLKSTAT,NRF_SPIM3->FREQUENCY,NRF_NVMC->ICACHECNF);
@@ -457,8 +457,8 @@ lv_obj_t *zmk_display_status_screen(void) {
     return root;
   }
   dte_init(caps.x_resolution, caps.y_resolution);
-  dte_set_battery_count(IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_DONGLE_BATTERY)?3:2);
-  if (IS_ENABLED(CONFIG_ZMK_DONGLE_THEME_DIRECT_RGB565)) {
+  dte_set_battery_count(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_DONGLE_BATTERY)?3:2);
+  if (IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_DIRECT_RGB565)) {
     canvas=root; /* readiness/lifetime only; LVGL does not own the framebuffer */
     lv_display_enable_invalidation(lv_display_get_default(),false);
     lv_timer_pause(lv_display_get_refr_timer(lv_display_get_default()));
@@ -473,7 +473,7 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_set_pos(canvas, 0, 0);
   }
   wpm = zmk_wpm_get_state();
-  k_work_reschedule_for_queue(zmk_display_work_q(),&startup_work,K_MSEC(CONFIG_ZMK_DONGLE_THEME_STARTUP_DELAY_MS));
+  k_work_reschedule_for_queue(zmk_display_work_q(),&startup_work,K_MSEC(CONFIG_ZMK_DONGLE_SCREEN_STARTUP_DELAY_MS));
 #if DT_HAS_CHOSEN(zmk_touch)
   LOG_INF("CST816S ready=%d; rotation=90; hardware gestures enabled",
           device_is_ready(DEVICE_DT_GET(DT_CHOSEN(zmk_touch))));

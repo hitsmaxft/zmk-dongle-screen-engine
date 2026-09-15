@@ -27,15 +27,15 @@ bootstrap release.
 Add this repository and a theme repository as Zephyr modules in the ZMK west
 manifest, then include these shields in the dongle build:
 
-    <display-and-touch-hardware> dongle_theme_host <your-theme-shield>
+    <display-and-touch-hardware> dongle_screen_host <your-theme-shield>
 
 The theme must include `zmk/dongle_theme/theme.h` and define exactly one
 `const struct dte_theme dte_selected_theme`. See `examples/minimal-theme` for a
 complete theme and preview manifest.
 
-Useful Kconfig options include `ZMK_DONGLE_THEME_FPS`,
-`ZMK_DONGLE_THEME_BRIGHTNESS`, `ZMK_DONGLE_THEME_DIRECT_RGB565`,
-`ZMK_DONGLE_THEME_PACKED_RECTS` and `ZMK_DONGLE_THEME_DONGLE_BATTERY`.
+Useful Kconfig options include `ZMK_DONGLE_SCREEN_FPS`,
+`ZMK_DONGLE_SCREEN_BRIGHTNESS`, `ZMK_DONGLE_SCREEN_DIRECT_RGB565`,
+`ZMK_DONGLE_SCREEN_PACKED_RECTS` and `ZMK_DONGLE_SCREEN_DONGLE_BATTERY`.
 
 ## Native and WASM preview
 

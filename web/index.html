@@ -5,24 +5,25 @@
 .layout>*,.device-stage{min-width:0}select{max-width:100%}
 .screen{width:min(420px,calc(100vw - 90px));max-width:100%}
 </style></head><body><main>
-<header><div><small>DONGLE SCREEN ENGINE / THEME PREVIEW</small><h1>Minimal theme</h1></div><small>RGB565 · shared C renderer · 60Hz timeline</small></header>
-<div class="layout"><section><div class="device-stage"><div class="screen"><canvas id="screen" width="280" height="240" aria-label="Dongle screen theme preview"></canvas></div></div>
-<div class="controls"><button id="gauge">Default</button><button id="information">Swipe left</button><button id="style">Tap</button><button id="page">Swipe up</button></div>
-<p class="hint">This local preview drives the same C state, gesture and RGB565 render path used by firmware. It does not connect to a keyboard.</p><div id="status">Loading theme…</div><div id="error" role="alert"></div></section>
-<aside><small>PREVIEW CONTROLS</small>
-<label for="resolution">逻辑分辨率</label><select id="resolution"><option value="280,240">280 × 240 · landscape</option><option value="240,280">240 × 280 · portrait</option><option value="240,240">240 × 240 · square</option></select>
+<header><div><small data-i18n="brand">DONGLE SCREEN ENGINE / THEME PREVIEW</small><h1 data-i18n="title">Minimal theme</h1></div><div><label for="locale" data-i18n="language">Language</label><select id="locale"><option value="en">English</option><option value="zh-CN">简体中文</option><option value="ja">日本語</option></select></div></header>
+<div class="layout"><section><div class="device-stage"><div class="screen"><canvas id="screen" width="280" height="240" aria-label="Dongle screen theme preview" data-i18n-aria="canvas_label"></canvas></div></div>
+<div class="controls"><button id="gauge" data-i18n="default">Default</button><button id="information" data-i18n="swipe_left">Swipe left</button><button id="style" data-i18n="tap">Tap</button><button id="page" data-i18n="swipe_up">Swipe up</button></div>
+<p class="hint" data-i18n="preview_hint">This local preview drives the same C state, gesture and RGB565 render path used by firmware. It does not connect to a keyboard.</p><div id="status" data-i18n="loading">Loading theme…</div><div id="error" role="alert"></div></section>
+<aside><small data-i18n="controls">PREVIEW CONTROLS</small>
+<label for="resolution" data-i18n="resolution">Logical resolution</label><select id="resolution"><option value="280,240" data-i18n="landscape">280 × 240 · landscape</option><option value="240,280" data-i18n="portrait">240 × 280 · portrait</option><option value="240,240" data-i18n="square">240 × 240 · square</option></select>
 <label for="wpm">WPM <output id="wpm-value">72</output></label><input id="wpm" type="range" min="0" max="180" value="72">
-<label for="battery-count">电池布局</label><select id="battery-count"><option value="2">两块 · 左 0 / 右 1</option><option value="3" selected>三块 · 左 dongle / 右 0、1</option></select>
-<label for="dongle-battery">Dongle 电池 <output id="dongle-value">93%</output></label><input id="dongle-battery" type="range" min="-1" max="100" value="93">
-<label for="split0-battery">分体 0 电池 <output id="split0-value">87%</output></label><input id="split0-battery" type="range" min="-1" max="100" value="87">
-<label for="split1-battery">分体 1 电池 <output id="split1-value">64%</output></label><input id="split1-battery" type="range" min="-1" max="100" value="64">
-<label for="layer">当前层</label><select id="layer"><option value="0">BASE</option><option value="1">LOWER</option><option value="2">RAISE</option><option value="3">NAV</option></select>
-<label for="endpoint">输出</label><select id="endpoint"><option value="1">USB</option><option value="2">BLE · Profile 2</option><option value="0">未连接</option></select>
-<fieldset><legend>修饰键</legend><div class="controls" id="mods"><button data-mod="1">Ctrl</button><button data-mod="2">Shift</button><button data-mod="4">Alt</button><button data-mod="8">GUI</button></div></fieldset>
-<div class="controls"><button id="disconnect">右手断连</button><button id="unknown">电量未知</button></div>
-<div class="controls"><button id="play">暂停</button><button id="step">单帧 +16.67ms</button><button id="replay">重播演示</button></div>
-<div id="trace"></div><p class="hint">60Hz is the animation timeline, not a claim that a given display transport presents every frame.</p></aside></div>
-<footer><span>One state machine and RGB565 renderer across native, WASM and firmware.</span><span>Engine example</span></footer>
+<label for="battery-count" data-i18n="battery_layout">Battery layout</label><select id="battery-count"><option value="2" data-i18n="two_batteries">Two · split 0 / split 1</option><option value="3" selected data-i18n="three_batteries">Three · dongle / split 0 / split 1</option></select>
+<label for="dongle-battery"><span data-i18n="dongle_battery">Dongle battery</span> <output id="dongle-value">93%</output></label><input id="dongle-battery" type="range" min="-1" max="100" value="93">
+<label for="split0-battery"><span data-i18n="split0_battery">Split 0 battery</span> <output id="split0-value">87%</output></label><input id="split0-battery" type="range" min="-1" max="100" value="87">
+<label for="split1-battery"><span data-i18n="split1_battery">Split 1 battery</span> <output id="split1-value">64%</output></label><input id="split1-battery" type="range" min="-1" max="100" value="64">
+<label for="layer" data-i18n="layer">Layer</label><select id="layer"><option value="0">BASE</option><option value="1">LOWER</option><option value="2">RAISE</option><option value="3">NAV</option></select>
+<label for="endpoint" data-i18n="endpoint">Endpoint</label><select id="endpoint"><option value="1">USB</option><option value="2">BLE · Profile 2</option><option value="0" data-i18n="disconnected">Disconnected</option></select>
+<fieldset><legend data-i18n="modifiers">Modifiers</legend><div class="controls" id="mods"><button data-mod="1">Ctrl</button><button data-mod="2">Shift</button><button data-mod="4">Alt</button><button data-mod="8">GUI</button></div></fieldset>
+<div class="controls"><button id="disconnect" data-i18n="disconnect_right">Disconnect right</button><button id="unknown" data-i18n="unknown_battery">Unknown battery</button></div>
+<div class="controls"><button id="play" data-i18n="pause">Pause</button><button id="step" data-i18n="step">Single frame +16.67ms</button><button id="replay" data-i18n="replay">Replay</button></div>
+<div id="trace"></div><p class="hint" data-i18n="timing_hint">60Hz is the animation timeline, not a claim that a given display transport presents every frame.</p></aside></div>
+<footer><span data-i18n="footer">One state machine and RGB565 renderer across native, WASM and firmware.</span><span data-i18n="example">Engine example</span></footer>
 </main><script>const WASM_BASE64='/*__WASM__*/';
+/*__I18N_JS__*/
 /*__PREVIEW_JS__*/
 </script></body></html>

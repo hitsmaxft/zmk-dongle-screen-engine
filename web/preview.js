@@ -1,7 +1,7 @@
 (async()=>{
   const {instance}=await WebAssembly.instantiate(Uint8Array.from(atob(WASM_BASE64),x=>x.charCodeAt(0)));
   const api=instance.exports,canvas=document.querySelector('#screen'),ctx=canvas.getContext('2d',{alpha:false});
-  let time=0,last=null,running=true,demo=true,index=0,mods=0,offline=false,unknown=false;
+  let time=0,last=null,running=true,demo=true,index=0,mods=0,offline=false,unknown=false,statusMode='auto',lastAction=0;
   const sequence=[[900,0],[2000,2],[3400,4],[4300,3],[5600,-1],[7000,2],[8500,3],[9600,6]];
   api.dte_init(280,240);
   function state(){api.dte_set_battery_count(+$('battery-count').value);api.dte_set_display_stats?.(40,600);api.dte_set_state(+$('wpm').value,+$('layer').value,+$('endpoint').value,1,mods,unknown?-1:+$('split0-battery').value,unknown?-1:+$('split1-battery').value,unknown?-1:+$('dongle-battery').value,1,offline?0:1);setName($('layer').selectedOptions[0].text);}
@@ -12,9 +12,10 @@
     for(let i=0;i<src.length;i++){const p=src[i];im.data[i*4]=(p>>11)*255/31;im.data[i*4+1]=((p>>5)&63)*255/63;im.data[i*4+2]=(p&31)*255/31;im.data[i*4+3]=255;}ctx.putImageData(im,0,0);
     $('trace').textContent=`time ${time.toFixed(1)} ms\nframe ${w}×${h} · RGB565\nhash ${api.dte_hash().toString(16)} · simulation`;
   }
-  function action(g){demo=false;api.dte_gesture(g,Math.round(time));draw();$('status').textContent='交互预览 · '+({1:'表盘形态转换',2:'圆环右移 / 信息展开',3:'圆环归中',4:'下一信息页',5:'上一信息页',6:'回到初始视图'}[g]);}
+  function localizeDynamic(){const t=window.dteI18n.t;$('play').textContent=t(running?'pause':'continue');$('status').textContent=statusMode==='auto'?t('auto'):t('interactive')+' · '+(statusMode==='gesture'?t('shared_gesture'):t('actions')[lastAction]);}
+  function action(g){demo=false;statusMode='action';lastAction=g;api.dte_gesture(g,Math.round(time));draw();localizeDynamic();}
   function tick(t){if(last===null)last=t;if(running){time+=Math.min(t-last,100);if(demo){while(index<sequence.length&&time>=sequence[index][0]){const [at,g]=sequence[index];if(g<=0){$('wpm').value=g===0?128:72;$('wpm-value').value=$('wpm').value;state();api.dte_render(at);}else api.dte_gesture(g,at);index++;}if(time>11000)reset();}draw();}last=t;requestAnimationFrame(tick);}
-  function reset(){time=0;index=0;$('wpm').value=72;$('wpm-value').value=72;api.dte_init(...$('resolution').value.split(',').map(Number));state();demo=true;running=true;$('play').textContent='暂停';$('status').textContent='自动演示 · 模拟数据';draw();}
+  function reset(){time=0;index=0;$('wpm').value=72;$('wpm-value').value=72;api.dte_init(...$('resolution').value.split(',').map(Number));state();demo=true;running=true;statusMode='auto';draw();localizeDynamic();}
   $('gauge').onclick=()=>action(3);$('information').onclick=()=>action(2);$('style').onclick=()=>action(1);$('page').onclick=()=>action(4);
   for(const id of ['wpm','layer','endpoint'])$(id).oninput=()=>{$('wpm-value').value=$('wpm').value;state();draw();};
   for(const prefix of ['dongle','split0','split1'])$(prefix+'-battery').oninput=()=>{const v=+$(prefix+'-battery').value;$(prefix+'-value').textContent=v<0?'--':v+'%';state();draw();};
@@ -22,14 +23,15 @@
   $('mods').onclick=e=>{const bit=+e.target.dataset.mod;if(!bit)return;mods^=bit;e.target.classList.toggle('active');state();draw();};
   $('disconnect').onclick=()=>{offline=!offline;$('disconnect').classList.toggle('active',offline);state();draw();};
   $('unknown').onclick=()=>{unknown=!unknown;$('unknown').classList.toggle('active',unknown);state();draw();};
-  $('resolution').onchange=reset;$('play').onclick=()=>{running=!running;$('play').textContent=running?'暂停':'继续';};
-  $('step').onclick=()=>{running=false;$('play').textContent='继续';time+=1000/60;draw();};$('replay').onclick=reset;
+  $('resolution').onchange=reset;$('play').onclick=()=>{running=!running;localizeDynamic();};
+  $('step').onclick=()=>{running=false;time+=1000/60;draw();localizeDynamic();};$('replay').onclick=reset;
   let contact=null,hold=null;
   function pointer(e,down){const r=canvas.getBoundingClientRect();api.dte_touch(Math.round((e.clientX-r.left)*canvas.width/r.width),Math.round((e.clientY-r.top)*canvas.height/r.height),down,Math.round(time));draw();}
   canvas.onpointerdown=e=>{demo=false;canvas.setPointerCapture(e.pointerId);contact={time};pointer(e,1);hold=setTimeout(()=>{if(contact){time=Math.max(time,contact.time+600);draw();}},600);};
   canvas.onpointermove=e=>{if(contact)pointer(e,1);};
-  canvas.onpointerup=e=>{clearTimeout(hold);if(!contact)return;pointer(e,0);contact=null;$('status').textContent='交互预览 · 共用 C 手势识别器';};
+  canvas.onpointerup=e=>{clearTimeout(hold);if(!contact)return;pointer(e,0);contact=null;statusMode='gesture';localizeDynamic();};
   canvas.onpointercancel=()=>{clearTimeout(hold);contact=null;api.dte_touch_cancel();};
-  window.dtePreview={api,drawAt(t){time=t;demo=false;running=false;draw();},gesture(g,t){api.dte_gesture(g,t);},reset(w=280,h=240){api.dte_init(w,h);state();},hash:()=>api.dte_hash()>>>0};
+  document.addEventListener('dte-locale-change',localizeDynamic);
+  window.dtePreview={api,drawAt(t){time=t;demo=false;running=false;draw();localizeDynamic();},gesture(g,t){api.dte_gesture(g,t);},reset(w=280,h=240){api.dte_init(w,h);state();},hash:()=>api.dte_hash()>>>0};
   reset();requestAnimationFrame(tick);
-})().catch(e=>{document.getElementById('error').textContent='预览启动失败：'+e.message;document.getElementById('status').textContent='请重新构建预览';});
+})().catch(e=>{document.getElementById('error').textContent=window.dteI18n.t('load_error')+e.message;document.getElementById('status').textContent=window.dteI18n.t('reload');});

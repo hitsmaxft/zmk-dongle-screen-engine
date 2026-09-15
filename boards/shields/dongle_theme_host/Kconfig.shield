@@ -1,2 +1,0 @@
-config SHIELD_DONGLE_THEME_HOST
-    def_bool $(shields_list_contains,dongle_theme_host)

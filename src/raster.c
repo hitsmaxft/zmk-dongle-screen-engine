@@ -59,7 +59,7 @@ void dtr_clear(int r,int g,int b){
 }
 void dtr_hide_text(int hidden){hide_text=hidden;}
 static float distance_xy(int x,int y){
-#if !defined(__ZEPHYR__) || defined(CONFIG_ZMK_DONGLE_THEME_DISTANCE_LUT)
+#if !defined(__ZEPHYR__) || defined(CONFIG_ZMK_DONGLE_SCREEN_DISTANCE_LUT)
   unsigned ax=x<0?-x:x,ay=y<0?-y:y;
   if(ax<128&&ay<128){union {uint32_t bits;float value;} v={.bits=dtr_distance_bits[ay*128+ax]};return v.value;}
 #endif

@@ -45,6 +45,8 @@ void dte_set_layer_name(const char *name);
 void dte_set_battery_count(int count);
 void dte_set_display_stats(int backlight, int refresh_rate_x10);
 void dte_set_startup_phase(int phase);
+/* Writable 24-byte bridge used by host/WASM callers before set_layer_name(). */
+char *dte_name_buffer(void);
 void dte_gesture(int kind, uint32_t now);
 /* Optional theme animation extension; zero mask means original fixed animation. */
 enum dte_animation { DTE_ANIMATION_RADIAL=1, DTE_ANIMATION_DENSITY=2, DTE_ANIMATION_CLASSIC=3,

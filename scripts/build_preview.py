@@ -31,8 +31,9 @@ def build(lvgl, theme, output, variant=None):
     native_flags=['-dynamiclib'] if platform.system()=='Darwin' else ['-shared','-fPIC']
     subprocess.run([clang,*native_flags,*common,'-o',str(output/native_name)],check=True,env=env)
     template=(engine/'web/index.html').read_text()
+    i18n=(engine/'web/i18n.js').read_text()
     js=(engine/'web/preview.js').read_text()
-    standalone=template.replace('/*__WASM__*/',base64.b64encode((output/'theme.wasm').read_bytes()).decode()).replace('/*__PREVIEW_JS__*/',js)
+    standalone=template.replace('/*__WASM__*/',base64.b64encode((output/'theme.wasm').read_bytes()).decode()).replace('/*__I18N_JS__*/',i18n).replace('/*__PREVIEW_JS__*/',js)
     (output/'index.html').write_text(standalone)
     (output/'preview-manifest.json').write_text(json.dumps({'theme':manifest['id'],'variant':variant,'fps':60,'native_library':native_name,'shared_sources':[str(s) for s in sources],'render':'same C RGB565 rasterizer on native, WASM and firmware'},indent=2))
     print(output/'index.html')
