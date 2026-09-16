@@ -3,6 +3,11 @@
 Pixel-art 素材之抠图、逐区移植、独立双路像素校验及动画验收，须遵循
 [pixel-art-porting.md](pixel-art-porting.md)。
 
+像素主题的开发顺序是强制的：背景 → 静态前景 → 独立 atlas → 静态组合 →
+离散帧动画 → 局部重绘。不得在效果门禁之前实现 retained rendering、
+dirty rectangle、压缩或运行时素材生成。动画质量与逐帧像素稳定性优先于
+刷新率、Flash 与 RAM 优化。
+
 ## Shared renderer path
 
 Theme 的 firmware、native 与 WASM 应编译同一组 C 源。先以
