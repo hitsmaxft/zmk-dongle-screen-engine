@@ -50,7 +50,18 @@ swipe followed by a duplicate software swipe. Input callbacks enqueue samples;
 theme callbacks and drawing remain serialized on the display work queue.
 
 See [the API manual](docs/api.md) for descriptor, snapshot, animation, touch,
-raster and transport contracts.
+raster and transport contracts. Theme authors should also follow the
+[development workflow](docs/development.md) and the
+[pixel-art porting guide](docs/pixel-art-porting.md).
+
+### RGB565 visual evidence
+
+`scripts/compare_reference.py` compares a raw native/WASM framebuffer with a
+reference after both enter the same RGB565 domain. It reports regional pixel
+differences, generated-only bright speckles and local brightness spikes, and
+can make selected regions strict CI gates. Pixel-art themes can request
+nearest-neighbor preview scaling through their manifest without changing the
+firmware renderer.
 
 ## Current contract
 

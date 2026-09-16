@@ -124,6 +124,10 @@ void dtr_pixel(int x, int y, int r, int g, int b, int alpha) {
   }
   *p = dither565(x, y, r, g, b);
 }
+void dtr_pixel565(int x,int y,uint16_t color) {
+  if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||y>=dtr_clip.bottom||!dirty_pixel(x,y))return;
+  fb[y*W+x]=color;
+}
 void dtr_rect(int x, int y, int w, int h, int r, int g, int b, int a) {
   if(!dirty_rect(x,y,w,h)||a<=0)return;
   for (int j = y; j < y + h; j++)

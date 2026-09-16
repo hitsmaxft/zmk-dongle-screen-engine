@@ -80,6 +80,10 @@ radial mark, spindle, arc, density/reveal arc, simple bitmap text, and metallic
 ring drawing. The bundled font is a small renderer resource, not a localization
 system.
 
+`dtr_pixel565()` writes an exact pre-quantized opaque RGB565 asset pixel without
+running the RGB888 Bayer quantizer again. Use it for pixel-perfect sprite atlases;
+use `dtr_pixel()` for coverage-blended vector and font edges.
+
 RGB888 inputs are quantized to RGB565 with a fixed 4x4 Bayer matrix. The matrix
 is anchored to destination coordinates so stationary frames do not shimmer.
 Arc and line edges use coverage alpha rather than whole-screen noise.

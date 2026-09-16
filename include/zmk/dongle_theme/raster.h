@@ -20,6 +20,8 @@ float dtr_root(float x);
 int dtr_trig(int angle) __attribute__((const));
 uint16_t dtr_rgb(int r,int g,int b) __attribute__((const));
 void dtr_pixel(int x,int y,int r,int g,int b,int alpha);
+/* Exact pre-quantized asset pixel; bypasses RGB888 blending/dithering. */
+void dtr_pixel565(int x,int y,uint16_t color);
 void dtr_rect(int x,int y,int w,int h,int r,int g,int b,int alpha);
 void dtr_line(int x,int y,int xx,int yy,int weight,int r,int g,int b,int alpha);
 void dtr_radial(int cx,int cy,int r1,int r2,int angle,int weight,int r,int g,int b,int alpha);

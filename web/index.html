@@ -5,7 +5,7 @@
 .layout>*,.device-stage{min-width:0}select{max-width:100%}
 .screen{width:min(420px,calc(100vw - 90px));max-width:100%}
 </style></head><body><main>
-<header><div><small data-i18n="brand">DONGLE SCREEN ENGINE / THEME PREVIEW</small><h1 data-i18n="title">Minimal theme</h1></div><div><label for="locale" data-i18n="language">Language</label><select id="locale"><option value="en">English</option><option value="zh-CN">简体中文</option><option value="ja">日本語</option></select></div></header>
+<header><div><small data-i18n="brand">DONGLE SCREEN ENGINE / THEME PREVIEW</small><h1>/*__THEME_NAME__*/</h1></div><div><label for="locale" data-i18n="language">Language</label><select id="locale"><option value="en">English</option><option value="zh-CN">简体中文</option><option value="ja">日本語</option></select></div></header>
 <div class="layout"><section><div class="device-stage"><div class="screen"><canvas id="screen" width="280" height="240" aria-label="Dongle screen theme preview" data-i18n-aria="canvas_label"></canvas></div></div>
 <div class="controls"><button id="gauge" data-i18n="default">Default</button><button id="information" data-i18n="swipe_left">Swipe left</button><button id="style" data-i18n="tap">Tap</button><button id="page" data-i18n="swipe_up">Swipe up</button></div>
 <p class="hint" data-i18n="preview_hint">This local preview drives the same C state, gesture and RGB565 render path used by firmware. It does not connect to a keyboard.</p><div id="status" data-i18n="loading">Loading theme…</div><div id="error" role="alert"></div></section>

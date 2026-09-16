@@ -2,6 +2,7 @@
 """Shared engine preview builder. Compiles the same theme/core into WASM and a native library."""
 import argparse
 import base64
+import html
 import json
 import os
 import platform
@@ -20,7 +21,7 @@ def build(lvgl, theme, output, variant=None):
     variant=variant or manifest.get('default_variant')
     theme_sources=manifest['variants'][variant] if 'variants' in manifest else manifest['sources']
     sources=[engine/'src/engine.c',engine/'src/raster.c']+[theme/s for s in theme_sources]
-    common=['-O2','-fno-builtin','-ffp-contract=off','-I',str(engine/'include'),'-I',str(output),*[str(s) for s in sources]]
+    common=['-O2','-fno-builtin','-ffp-contract=off','-I',str(engine/'include'),'-I',str(theme/'include'),'-I',str(output),*[str(s) for s in sources]]
     exports=['dte_init','dte_name_buffer','dte_set_state','dte_set_battery_count','dte_set_display_stats','dte_set_startup_phase','dte_set_layer_name','dte_gesture','dte_touch','dte_touch_cancel','dte_render','dte_pixels','dte_width','dte_height','dte_hash','dte_animation_options','dte_set_animation','dte_get_animation','dte_set_animation_duration','dte_get_animation_duration','dte_force_redraw']
     clang=shutil.which('clang')
     if not clang or not shutil.which('wasm-ld'):
@@ -31,11 +32,14 @@ def build(lvgl, theme, output, variant=None):
     native_flags=['-dynamiclib'] if platform.system()=='Darwin' else ['-shared','-fPIC']
     subprocess.run([clang,*native_flags,*common,'-o',str(output/native_name)],check=True,env=env)
     template=(engine/'web/index.html').read_text()
+    if manifest.get('pixel_art'):
+        template=template.replace('</style>','canvas{image-rendering:pixelated}.screen{width:294px;border-radius:0}.device-stage{border-radius:0}</style>')
     i18n=(engine/'web/i18n.js').read_text()
     js=(engine/'web/preview.js').read_text()
-    standalone=template.replace('/*__WASM__*/',base64.b64encode((output/'theme.wasm').read_bytes()).decode()).replace('/*__I18N_JS__*/',i18n).replace('/*__PREVIEW_JS__*/',js)
+    title=html.escape(manifest.get('display_name',manifest['id']))
+    standalone=template.replace('/*__THEME_NAME__*/',title).replace('/*__WASM__*/',base64.b64encode((output/'theme.wasm').read_bytes()).decode()).replace('/*__I18N_JS__*/',i18n).replace('/*__PREVIEW_JS__*/',js)
     (output/'index.html').write_text(standalone)
-    (output/'preview-manifest.json').write_text(json.dumps({'theme':manifest['id'],'variant':variant,'fps':60,'native_library':native_name,'shared_sources':[str(s) for s in sources],'render':'same C RGB565 rasterizer on native, WASM and firmware'},indent=2))
+    (output/'preview-manifest.json').write_text(json.dumps({'theme':manifest['id'],'variant':variant,'fps':60,'continuous_animation':bool(manifest.get('continuous_animation',False)),'native_library':native_name,'shared_sources':[str(s) for s in sources],'render':'same C RGB565 rasterizer on native, WASM and firmware'},indent=2))
     print(output/'index.html')
 
 if __name__=='__main__':

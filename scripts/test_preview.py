@@ -35,8 +35,12 @@ def verify(output):
         api.dte_render(1700);return api.dte_hash()
     assert hold(True)==hold(False)
     # Stationary rendered output must not flicker as a result of ordered dithering.
-    api.dte_init(280,240);api.dte_render(1000);first=api.dte_hash();api.dte_render(3000);assert first==api.dte_hash()
-    result={'native_wasm_equal_frames':len(actual),'viewports':3,'long_press_no_tap':True,'static_dither_no_shimmer':True}
+    api.dte_init(280,240);api.dte_render(1000);first=api.dte_hash()
+    api.dte_init(280,240);api.dte_render(1000);assert first==api.dte_hash()
+    static=not manifest.get('continuous_animation',False)
+    if static:
+        api.dte_render(3000);assert first==api.dte_hash()
+    result={'native_wasm_equal_frames':len(actual),'viewports':3,'long_press_no_tap':True,'deterministic_repeat':True,'static_dither_no_shimmer':static}
     (output/'test-results.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))
 
 if __name__=='__main__':
