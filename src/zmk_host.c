@@ -17,6 +17,7 @@
 #include <zmk/events/activity_state_changed.h>
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/endpoint_changed.h>
+#include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/modifiers_state_changed.h>
 #include <zmk/events/wpm_state_changed.h>
@@ -238,10 +239,11 @@ static int status_listener(const zmk_event_t *eh) {
   const struct zmk_battery_state_changed *d = as_zmk_battery_state_changed(eh);
   if (d)
     bd = d->state_of_charge;
-  const struct zmk_modifiers_state_changed *m =
-      as_zmk_modifiers_state_changed(eh);
-  if (m)
-    mods = m->modifiers;
+  /* ZMK currently declares modifiers_state_changed without raising it. Mirror
+   * the working display-widget pattern: use every keycode transition as the
+   * wake-up signal, then project the canonical aggregate HID modifier state. */
+  if (as_zmk_keycode_state_changed(eh) || as_zmk_modifiers_state_changed(eh))
+    mods = zmk_hid_get_explicit_mods();
   k_spin_unlock(&state_lock, key);
   const struct zmk_activity_state_changed *a =
       as_zmk_activity_state_changed(eh);
@@ -259,6 +261,7 @@ ZMK_LISTENER(theme_state, status_listener);
 ZMK_SUBSCRIPTION(theme_state, zmk_peripheral_battery_state_changed);
 ZMK_SUBSCRIPTION(theme_state, zmk_battery_state_changed);
 ZMK_SUBSCRIPTION(theme_state, zmk_layer_state_changed);
+ZMK_SUBSCRIPTION(theme_state, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(theme_state, zmk_modifiers_state_changed);
 ZMK_SUBSCRIPTION(theme_state, zmk_wpm_state_changed);
 ZMK_SUBSCRIPTION(theme_state, zmk_endpoint_changed);
