@@ -11,6 +11,13 @@ raster and transport path is RGB565. Theme-local localization, fonts and copy
 remain the theme's responsibility. The WASM preview shell localization is not
 part of the firmware ABI.
 
+The preview-only hardware model reads `dtr_dirty_tiles()` after each WASM
+render, estimates full-frame, dirty-band or packed-tile transfer bytes, and
+throttles presentation by target FPS plus estimated CPU/SPI cost. Profile
+changes never reinitialize WASM or mutate the theme snapshot. The nRF52840
+preset is deliberately conservative and must be calibrated against physical
+display measurements before treating its FPS as a hardware claim.
+
 ## Theme descriptor
 
 Include `zmk/dongle_theme/theme.h` and define one descriptor:

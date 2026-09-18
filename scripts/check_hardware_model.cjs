@@ -1,0 +1,11 @@
+const assert=require('assert'),fs=require('fs'),vm=require('vm');
+const window={};vm.runInNewContext(fs.readFileSync('web/hardware.js','utf8'),{window});
+const model=window.dteHardwareModel,full=Array(15).fill((1<<18)-1),one=Array(15).fill(0);one[4]=1<<7;
+assert.strictEqual(model.dirtyStats(full,280,240,'full').bytes,280*240*2);
+assert.strictEqual(model.dirtyStats(one,280,240,'bands').bytes,280*16*2);
+assert.strictEqual(model.dirtyStats(one,280,240,'packed').bytes,16*16*2);
+assert.strictEqual(model.dirtyStats(Array(15).fill(0),280,240,'packed').bytes,0);
+const cost=model.estimate(0.1,model.profiles.nrf52840,model.dirtyStats(one,280,240,'bands'));
+assert(cost.renderMs===8&&cost.transferMs>2&&cost.totalMs>cost.renderMs);
+assert.deepStrictEqual(Object.keys(model.profiles).sort(),['custom','nrf52840','unlimited']);
+console.log('hardware model ok: profiles, dirty transport and cost budget');

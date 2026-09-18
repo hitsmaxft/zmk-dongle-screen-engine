@@ -1,37 +1,36 @@
 (async()=>{
   const {instance}=await WebAssembly.instantiate(Uint8Array.from(atob(WASM_BASE64),x=>x.charCodeAt(0)));
-  const api=instance.exports,canvas=document.querySelector('#screen'),ctx=canvas.getContext('2d',{alpha:false});
+  const api=instance.exports,model=window.dteHardwareModel,canvas=document.querySelector('#screen'),ctx=canvas.getContext('2d',{alpha:false});
   let time=0,last=null,running=true,demo=true,index=0,mods=0,offline=false,unknown=false,statusMode='auto',lastAction=0;
+  let hardwareReadyAt=0,nextFrameAt=0,metricsStart=0,logicalCount=0,presentedCount=0,droppedCount=0;
+  let logicalFps=0,presentedFps=0,droppedPercent=0,lastWasmMs=0,lastTransfer={tiles:0,bytes:0,rects:0},lastEstimate={renderMs:0,transferMs:0,totalMs:0};
   const sequence=[[900,0],[2000,2],[3400,4],[4300,3],[5600,-1],[7000,2],[8500,3],[9600,6]];
   api.dte_init(280,240);
-  function state(){api.dte_set_battery_count(+$('battery-count').value);api.dte_set_display_stats?.(40,600);api.dte_set_state(+$('wpm').value,+$('layer').value,+$('endpoint').value,1,mods,unknown?-1:+$('split0-battery').value,unknown?-1:+$('split1-battery').value,unknown?-1:+$('dongle-battery').value,1,offline?0:1);setName($('layer').selectedOptions[0].text);}
-  function setName(s){const ptr=api.dte_name_buffer();const b=new Uint8Array(api.memory.buffer,ptr,24);b.fill(0);b.set(new TextEncoder().encode(s).slice(0,23));api.dte_set_layer_name(ptr);}
   function $(s){return document.getElementById(s);}
-  function draw(){api.dte_render(Math.round(time));const w=api.dte_width(),h=api.dte_height();if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
-    const src=new Uint16Array(api.memory.buffer,api.dte_pixels(),w*h),im=ctx.createImageData(w,h);
-    for(let i=0;i<src.length;i++){const p=src[i];im.data[i*4]=(p>>11)*255/31;im.data[i*4+1]=((p>>5)&63)*255/63;im.data[i*4+2]=(p&31)*255/31;im.data[i*4+3]=255;}ctx.putImageData(im,0,0);
-    $('trace').textContent=`time ${time.toFixed(1)} ms\nframe ${w}×${h} · RGB565\nhash ${api.dte_hash().toString(16)} · simulation`;
-  }
-  function localizeDynamic(){const t=window.dteI18n.t;$('play').textContent=t(running?'pause':'continue');$('status').textContent=statusMode==='auto'?t('auto'):t('interactive')+' · '+(statusMode==='gesture'?t('shared_gesture'):t('actions')[lastAction]);}
-  function action(g){demo=false;statusMode='action';lastAction=g;api.dte_gesture(g,Math.round(time));draw();localizeDynamic();}
-  function tick(t){if(last===null)last=t;if(running){time+=Math.min(t-last,100);if(demo){while(index<sequence.length&&time>=sequence[index][0]){const [at,g]=sequence[index];if(g<=0){$('wpm').value=g===0?128:72;$('wpm-value').value=$('wpm').value;state();api.dte_render(at);}else api.dte_gesture(g,at);index++;}if(time>11000)reset();}draw();}last=t;requestAnimationFrame(tick);}
-  function reset(){time=0;index=0;$('wpm').value=72;$('wpm-value').value=72;api.dte_init(...$('resolution').value.split(',').map(Number));state();demo=true;running=true;statusMode='auto';draw();localizeDynamic();}
+  function state(){api.dte_set_battery_count(+$('battery-count').value);api.dte_set_display_stats?.(40,Math.round(presentedFps*10));api.dte_set_state(+$('wpm').value,+$('layer').value,+$('endpoint').value,1,mods,unknown?-1:+$('split0-battery').value,unknown?-1:+$('split1-battery').value,unknown?-1:+$('dongle-battery').value,1,offline?0:1);setName($('layer').selectedOptions[0].text);}
+  function setName(s){const ptr=api.dte_name_buffer();const b=new Uint8Array(api.memory.buffer,ptr,24);b.fill(0);b.set(new TextEncoder().encode(s).slice(0,23));api.dte_set_layer_name(ptr);}
+  function hardwareProfile(){const preset=model.profiles[$('hardware-profile').value];if(preset?.unlimited)return preset;return {fps:+$('target-fps').value,spiMHz:+$('spi-clock').value,cpuScale:+$('cpu-scale').value,transport:$('transport').value,unlimited:false};}
+  function dirtyRows(w,h){const count=Math.ceil(h/16),ptr=api.dtr_dirty_tiles?.();if(!ptr)return Array(count).fill((1<<Math.ceil(w/16))-1);return Array.from(new Uint32Array(api.memory.buffer,ptr,count));}
+  function paint(){const w=api.dte_width(),h=api.dte_height();if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}const src=new Uint16Array(api.memory.buffer,api.dte_pixels(),w*h),im=ctx.createImageData(w,h);for(let i=0;i<src.length;i++){const p=src[i];im.data[i*4]=(p>>11)*255/31;im.data[i*4+1]=((p>>5)&63)*255/63;im.data[i*4+2]=(p&31)*255/31;im.data[i*4+3]=255;}ctx.putImageData(im,0,0);$('trace').textContent=`time ${time.toFixed(1)} ms\nframe ${w}×${h} · RGB565\nhash ${api.dte_hash().toString(16)} · simulation`;}
+  function renderFrame(count=true){const started=performance.now();api.dte_render(Math.round(time));lastWasmMs=performance.now()-started;const w=api.dte_width(),h=api.dte_height(),profile=hardwareProfile();lastTransfer=model.dirtyStats(dirtyRows(w,h),w,h,profile.transport);lastEstimate=model.estimate(lastWasmMs,profile,lastTransfer);hardwareReadyAt=time+lastEstimate.totalMs;if(count)presentedCount++;paint();updateMetrics();}
+  function formatBytes(value){return value<1024?`${value} B`:`${(value/1024).toFixed(1)} KiB`;}
+  function updateMetrics(){const t=window.dteI18n.t;$('hardware-metrics').textContent=`${t('logical_fps')}: ${logicalFps.toFixed(1)}\n${t('presented_fps')}: ${presentedFps.toFixed(1)}\n${t('render_cost')}: ${lastEstimate.renderMs.toFixed(2)} ms (${lastWasmMs.toFixed(3)} ms WASM)\n${t('transfer_cost')}: ${lastEstimate.transferMs.toFixed(2)} ms\n${t('dirty_tiles')}: ${lastTransfer.tiles}\n${t('transfer_bytes')}: ${formatBytes(lastTransfer.bytes)}\n${t('dropped_frames')}: ${droppedPercent.toFixed(1)}%`;}
+  function localizeDynamic(){const t=window.dteI18n.t;$('play').textContent=t(running?'pause':'continue');$('status').textContent=statusMode==='auto'?t('auto'):t('interactive')+' · '+(statusMode==='gesture'?t('shared_gesture'):t('actions')[lastAction]);updateMetrics();}
+  function action(g){demo=false;statusMode='action';lastAction=g;api.dte_gesture(g,Math.round(time));renderFrame(false);localizeDynamic();}
+  function updateOutputs(){$('target-fps-value').value=$('target-fps').value;$('spi-clock-value').value=$('spi-clock').value;$('cpu-scale-value').value=$('cpu-scale').value+'×';}
+  function applyProfile(name){$('hardware-profile').value=name;const p=model.profiles[name];if(p&&!p.unlimited){$('target-fps').value=p.fps;$('spi-clock').value=p.spiMHz;$('cpu-scale').value=p.cpuScale;$('transport').value=p.transport;}const disabled=!!p?.unlimited;for(const id of ['target-fps','spi-clock','cpu-scale','transport'])$(id).disabled=disabled;updateOutputs();hardwareReadyAt=nextFrameAt=time;renderFrame(false);}
+  function markCustom(){if($('hardware-profile').value!=='custom')$('hardware-profile').value='custom';for(const id of ['target-fps','spi-clock','cpu-scale','transport'])$(id).disabled=false;updateOutputs();hardwareReadyAt=nextFrameAt=time;}
+  function tick(t){if(last===null){last=t;metricsStart=t;}if(running){time+=Math.min(t-last,100);if(demo){while(index<sequence.length&&time>=sequence[index][0]){const [at,g]=sequence[index];if(g<=0){$('wpm').value=g===0?128:72;$('wpm-value').value=$('wpm').value;state();api.dte_render(at);}else api.dte_gesture(g,at);index++;}if(time>11000)reset();}const profile=hardwareProfile(),interval=1000/profile.fps;if(!nextFrameAt)nextFrameAt=time;if(time+0.01>=nextFrameAt){logicalCount++;nextFrameAt+=interval;if(profile.unlimited||time>=hardwareReadyAt)renderFrame(true);else droppedCount++;if(time-nextFrameAt>1000)nextFrameAt=time+interval;}}if(t-metricsStart>=500){const elapsed=t-metricsStart;logicalFps=logicalCount*1000/elapsed;presentedFps=presentedCount*1000/elapsed;droppedPercent=logicalCount?droppedCount*100/logicalCount:0;logicalCount=presentedCount=droppedCount=0;metricsStart=t;updateMetrics();}last=t;requestAnimationFrame(tick);}
+  function reset(){time=0;index=0;hardwareReadyAt=nextFrameAt=0;$('wpm').value=72;$('wpm-value').value=72;api.dte_init(...$('resolution').value.split(',').map(Number));state();demo=true;running=true;statusMode='auto';renderFrame(false);localizeDynamic();}
   $('gauge').onclick=()=>action(3);$('information').onclick=()=>action(2);$('style').onclick=()=>action(1);$('page').onclick=()=>action(4);
-  for(const id of ['wpm','layer','endpoint'])$(id).oninput=()=>{$('wpm-value').value=$('wpm').value;state();draw();};
-  for(const prefix of ['dongle','split0','split1'])$(prefix+'-battery').oninput=()=>{const v=+$(prefix+'-battery').value;$(prefix+'-value').textContent=v<0?'--':v+'%';state();draw();};
-  $('battery-count').onchange=()=>{state();draw();};
-  $('mods').onclick=e=>{const bit=+e.target.dataset.mod;if(!bit)return;mods^=bit;e.target.classList.toggle('active');state();draw();};
-  $('disconnect').onclick=()=>{offline=!offline;$('disconnect').classList.toggle('active',offline);state();draw();};
-  $('unknown').onclick=()=>{unknown=!unknown;$('unknown').classList.toggle('active',unknown);state();draw();};
-  $('resolution').onchange=reset;$('play').onclick=()=>{running=!running;localizeDynamic();};
-  $('step').onclick=()=>{running=false;time+=1000/60;draw();localizeDynamic();};$('replay').onclick=reset;
-  let contact=null,hold=null;
-  function pointer(e,down){const r=canvas.getBoundingClientRect();api.dte_touch(Math.round((e.clientX-r.left)*canvas.width/r.width),Math.round((e.clientY-r.top)*canvas.height/r.height),down,Math.round(time));draw();}
-  canvas.onpointerdown=e=>{demo=false;canvas.setPointerCapture(e.pointerId);contact={time};pointer(e,1);hold=setTimeout(()=>{if(contact){time=Math.max(time,contact.time+600);draw();}},600);};
-  canvas.onpointermove=e=>{if(contact)pointer(e,1);};
-  canvas.onpointerup=e=>{clearTimeout(hold);if(!contact)return;pointer(e,0);contact=null;statusMode='gesture';localizeDynamic();};
-  canvas.onpointercancel=()=>{clearTimeout(hold);contact=null;api.dte_touch_cancel();};
-  document.addEventListener('dte-locale-change',localizeDynamic);
-  window.dtePreview={api,drawAt(t){time=t;demo=false;running=false;draw();localizeDynamic();},gesture(g,t){api.dte_gesture(g,t);},reset(w=280,h=240){api.dte_init(w,h);state();},hash:()=>api.dte_hash()>>>0};
-  reset();requestAnimationFrame(tick);
+  for(const id of ['wpm','layer','endpoint'])$(id).oninput=()=>{$('wpm-value').value=$('wpm').value;state();renderFrame(false);};
+  for(const prefix of ['dongle','split0','split1'])$(prefix+'-battery').oninput=()=>{const v=+$(prefix+'-battery').value;$(prefix+'-value').textContent=v<0?'--':v+'%';state();renderFrame(false);};
+  $('battery-count').onchange=()=>{state();renderFrame(false);};$('mods').onclick=e=>{const bit=+e.target.dataset.mod;if(!bit)return;mods^=bit;e.target.classList.toggle('active');state();renderFrame(false);};
+  $('disconnect').onclick=()=>{offline=!offline;$('disconnect').classList.toggle('active',offline);state();renderFrame(false);};$('unknown').onclick=()=>{unknown=!unknown;$('unknown').classList.toggle('active',unknown);state();renderFrame(false);};
+  $('hardware-profile').onchange=e=>applyProfile(e.target.value);for(const id of ['target-fps','spi-clock','cpu-scale','transport'])$(id).oninput=markCustom;
+  $('resolution').onchange=reset;$('play').onclick=()=>{running=!running;localizeDynamic();};$('step').onclick=()=>{running=false;time+=1000/hardwareProfile().fps;renderFrame(true);localizeDynamic();};$('replay').onclick=reset;
+  let contact=null,hold=null;function pointer(e,down){const r=canvas.getBoundingClientRect();api.dte_touch(Math.round((e.clientX-r.left)*canvas.width/r.width),Math.round((e.clientY-r.top)*canvas.height/r.height),down,Math.round(time));renderFrame(false);}
+  canvas.onpointerdown=e=>{demo=false;canvas.setPointerCapture(e.pointerId);contact={time};pointer(e,1);hold=setTimeout(()=>{if(contact){time=Math.max(time,contact.time+600);renderFrame(false);}},600);};canvas.onpointermove=e=>{if(contact)pointer(e,1);};canvas.onpointerup=e=>{clearTimeout(hold);if(!contact)return;pointer(e,0);contact=null;statusMode='gesture';localizeDynamic();};canvas.onpointercancel=()=>{clearTimeout(hold);contact=null;api.dte_touch_cancel();};
+  document.addEventListener('dte-locale-change',localizeDynamic);window.dtePreview={api,drawAt(t){time=t;demo=false;running=false;renderFrame(false);localizeDynamic();},gesture(g,t){api.dte_gesture(g,t);},reset(w=280,h=240){api.dte_init(w,h);state();},hash:()=>api.dte_hash()>>>0,hardware:()=>({profile:hardwareProfile(),transfer:lastTransfer,estimate:lastEstimate,presentedFps,droppedPercent})};
+  applyProfile('nrf52840');reset();requestAnimationFrame(tick);
 })().catch(e=>{document.getElementById('error').textContent=window.dteI18n.t('load_error')+e.message;document.getElementById('status').textContent=window.dteI18n.t('reload');});

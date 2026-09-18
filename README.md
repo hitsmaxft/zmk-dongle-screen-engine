@@ -25,6 +25,14 @@ The parity replay compares native and WASM RGB565 hashes across three display
 sizes. It also verifies long-press de-duplication and that fixed spatial Bayer
 dithering does not shimmer between stationary frames.
 
+The preview shell also contains a hardware-budget simulator. Its nRF52840 +
+ST7789 preset uses the board's 32 MHz SPI ceiling, direct RGB565 dirty row
+bands, a 60 FPS target and a conservative adjustable CPU slowdown. Unlimited
+and custom modes permit A/B comparison. The shell reports logical/presented
+FPS, dirty tiles, estimated render and transfer time, transfer bytes and
+dropped frames. This is a relative engineering model, not a substitute for
+on-device timing; calibrate the CPU multiplier with measured firmware data.
+
 ![English WASM preview showing the engine controls](docs/images/wasm-preview-en.png)
 
 ### Animation without a fixed player

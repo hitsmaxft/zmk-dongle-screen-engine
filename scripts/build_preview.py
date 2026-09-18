@@ -22,7 +22,7 @@ def build(lvgl, theme, output, variant=None):
     theme_sources=manifest['variants'][variant] if 'variants' in manifest else manifest['sources']
     sources=[engine/'src/engine.c',engine/'src/raster.c']+[theme/s for s in theme_sources]
     common=['-O2','-fno-builtin','-ffp-contract=off','-I',str(engine/'include'),'-I',str(theme/'include'),'-I',str(output),*[str(s) for s in sources]]
-    exports=['dte_init','dte_name_buffer','dte_set_state','dte_set_battery_count','dte_set_display_stats','dte_set_startup_phase','dte_set_layer_name','dte_gesture','dte_touch','dte_touch_cancel','dte_render','dte_pixels','dte_width','dte_height','dte_hash','dte_animation_options','dte_set_animation','dte_get_animation','dte_set_animation_duration','dte_get_animation_duration','dte_force_redraw']
+    exports=['dte_init','dte_name_buffer','dte_set_state','dte_set_battery_count','dte_set_display_stats','dte_set_startup_phase','dte_set_layer_name','dte_gesture','dte_touch','dte_touch_cancel','dte_render','dte_pixels','dte_width','dte_height','dte_hash','dte_animation_options','dte_set_animation','dte_get_animation','dte_set_animation_duration','dte_get_animation_duration','dte_force_redraw','dtr_dirty_tiles']
     clang=shutil.which('clang')
     if not clang or not shutil.which('wasm-ld'):
         raise RuntimeError('Clang with wasm-ld is required; enter a toolchain environment that provides both')
@@ -35,11 +35,12 @@ def build(lvgl, theme, output, variant=None):
     if manifest.get('pixel_art'):
         template=template.replace('</style>','canvas{image-rendering:pixelated}.screen{width:294px;border-radius:0}.device-stage{border-radius:0}</style>')
     i18n=(engine/'web/i18n.js').read_text()
+    hardware=(engine/'web/hardware.js').read_text()
     js=(engine/'web/preview.js').read_text()
     title=html.escape(manifest.get('display_name',manifest['id']))
-    standalone=template.replace('/*__THEME_NAME__*/',title).replace('/*__WASM__*/',base64.b64encode((output/'theme.wasm').read_bytes()).decode()).replace('/*__I18N_JS__*/',i18n).replace('/*__PREVIEW_JS__*/',js)
+    standalone=template.replace('/*__THEME_NAME__*/',title).replace('/*__WASM__*/',base64.b64encode((output/'theme.wasm').read_bytes()).decode()).replace('/*__I18N_JS__*/',i18n).replace('/*__HARDWARE_JS__*/',hardware).replace('/*__PREVIEW_JS__*/',js)
     (output/'index.html').write_text(standalone)
-    (output/'preview-manifest.json').write_text(json.dumps({'theme':manifest['id'],'variant':variant,'fps':60,'continuous_animation':bool(manifest.get('continuous_animation',False)),'native_library':native_name,'shared_sources':[str(s) for s in sources],'render':'same C RGB565 rasterizer on native, WASM and firmware'},indent=2))
+    (output/'preview-manifest.json').write_text(json.dumps({'theme':manifest['id'],'variant':variant,'fps':60,'continuous_animation':bool(manifest.get('continuous_animation',False)),'hardware_simulation':{'profiles':['unlimited','nrf52840','custom'],'default':'nrf52840','estimate_only':True},'native_library':native_name,'shared_sources':[str(s) for s in sources],'render':'same C RGB565 rasterizer on native, WASM and firmware'},indent=2))
     print(output/'index.html')
 
 if __name__=='__main__':
