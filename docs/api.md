@@ -110,6 +110,16 @@ Retained themes may call `dtr_damage_begin()`, `dtr_damage_rect()`,
 `dtr_damage_ring()` or `dtr_damage_all()` before repainting. Dirty tiles are
 16x16 pixels and may be read with `dtr_dirty_tiles()`.
 
+## Shared theme utilities
+
+Include `zmk/dongle_theme/ui.h` for allocation-free utilities that are useful
+across themes. `struct dte_sprite` is a borrowed RGB565 view;
+`dte_sprite_blit()` treats `0x0001` as a transparent key, while
+`dte_sprite_blit_opaque()` copies every pixel exactly. The same header provides
+solid or alpha rectangles, a small rounded rectangle, bounded number/percent
+formatters, and a deterministic three-input hash. Theme-specific palettes,
+widgets, fonts, layouts, and asset payloads do not belong in the Engine.
+
 ## Transport API
 
 `zmk/dongle_theme/transport.h` provides allocation-free rectangle and row-band

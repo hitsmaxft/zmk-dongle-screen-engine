@@ -20,7 +20,7 @@ def build(lvgl, theme, output, variant=None):
     subprocess.run([sys.executable,str(engine/'scripts/generate_raster_assets.py'),'--lvgl',str(lvgl.resolve()),'--output',str(output/'dongle_raster_assets.h')],check=True)
     variant=variant or manifest.get('default_variant')
     theme_sources=manifest['variants'][variant] if 'variants' in manifest else manifest['sources']
-    sources=[engine/'src/engine.c',engine/'src/raster.c']+[theme/s for s in theme_sources]
+    sources=[engine/'src/engine.c',engine/'src/raster.c',engine/'src/ui.c']+[theme/s for s in theme_sources]
     common=['-O2','-fno-builtin','-ffp-contract=off','-I',str(engine/'include'),'-I',str(theme/'include'),'-I',str(output),*[str(s) for s in sources]]
     exports=['dte_init','dte_name_buffer','dte_set_state','dte_set_battery_count','dte_set_display_stats','dte_set_startup_phase','dte_set_layer_name','dte_gesture','dte_gesture_x','dte_gesture_y','dte_backlight_get','dte_backlight_adjust','dte_touch','dte_touch_hint','dte_touch_active','dte_touch_cancel','dte_render','dte_pixels','dte_width','dte_height','dte_hash','dte_animation_options','dte_set_animation','dte_get_animation','dte_set_animation_duration','dte_get_animation_duration','dte_force_redraw','dtr_dirty_tiles',*manifest.get('exports',[]),*manifest.get('variant_exports',{}).get(variant,[])]
     clang=shutil.which('clang')

@@ -101,7 +101,12 @@ manifest, then include these shields in the dongle build:
 
 The theme must include `zmk/dongle_theme/theme.h` and define exactly one
 `const struct dte_theme dte_selected_theme`. See `examples/minimal-theme` for a
-complete theme and preview manifest.
+complete theme and preview manifest. The short [theme examples](docs/examples.md)
+page also links external visual references.
+
+Reusable RGB565 sprite and small pixel-UI helpers live in
+`zmk/dongle_theme/ui.h`; keep theme palettes, layouts, animation policy, and
+asset payloads in the theme module.
 
 Useful Kconfig options include `ZMK_DONGLE_SCREEN_FPS`,
 `ZMK_DONGLE_SCREEN_BRIGHTNESS`, `ZMK_DONGLE_SCREEN_DIRECT_RGB565`,
