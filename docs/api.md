@@ -49,6 +49,14 @@ Host and preview adapters update snapshots through `dte_set_state()`,
 returns a writable 24-byte bridge for environments such as WASM; call
 `dte_set_layer_name()` after writing it.
 
+`dte_gesture_x()` and `dte_gesture_y()` expose the landscape-space touch
+origin while a theme handles a gesture. Direct button or API gestures return
+`-1`, allowing themes to retain their non-touch fallback behavior.
+`dte_backlight_adjust()` applies a bounded relative change to the runtime
+backlight and returns the new percentage; native/WASM updates the snapshot,
+while the ZMK host also applies it to the configured backlight LED.
+`dte_backlight_get()` reads the current runtime value.
+
 ## Lifecycle and rendering
 
 `dte_init(width, height)` resets engine and touch state, initializes unknown

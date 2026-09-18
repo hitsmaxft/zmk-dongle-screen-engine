@@ -48,6 +48,13 @@ void dte_set_startup_phase(int phase);
 /* Writable 24-byte bridge used by host/WASM callers before set_layer_name(). */
 char *dte_name_buffer(void);
 void dte_gesture(int kind, uint32_t now);
+/* Landscape-space origin of the gesture currently being dispatched. Direct
+ * button/API gestures have no touch origin and return -1 for both axes. */
+int dte_gesture_x(void);
+int dte_gesture_y(void);
+/* Runtime backlight command shared by native, WASM and the ZMK host. */
+int dte_backlight_get(void);
+int dte_backlight_adjust(int delta, int minimum, int maximum);
 /* Optional theme animation extension; zero mask means original fixed animation. */
 enum dte_animation { DTE_ANIMATION_RADIAL=1, DTE_ANIMATION_DENSITY=2, DTE_ANIMATION_CLASSIC=3,
                      DTE_ANIMATION_RADIAL_DENSITY=4, DTE_ANIMATION_LINEAR_DENSITY=5 };

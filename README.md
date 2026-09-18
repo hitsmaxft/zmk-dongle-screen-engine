@@ -60,6 +60,9 @@ press and four directional swipes. `dte_touch_hint()` merges controller-provided
 gesture hints with software recognition once per contact, preventing a hardware
 swipe followed by a duplicate software swipe. Input callbacks enqueue samples;
 theme callbacks and drawing remain serialized on the display work queue.
+Themes may inspect the landscape-space gesture origin to partition a screen
+without changing the theme descriptor. A bounded runtime backlight command
+updates the WASM/native snapshot and delegates physical PWM to the ZMK host.
 
 See [the API manual](docs/api.md) for descriptor, snapshot, animation, touch,
 raster and transport contracts. Theme authors should also follow the
@@ -79,7 +82,7 @@ firmware renderer.
 
 The bootstrap ABI supports one compile-time theme, 240x240, 240x280 and
 280x240 RGB565 surfaces, WPM/layer/endpoint/modifier/battery snapshots, tap,
-long press and four swipe directions, a 60 Hz deadline, fixed Bayer RGB565
+long press and four swipe directions, a configurable frame deadline, fixed Bayer RGB565
 dithering, retained tile damage and optional direct display writes.
 
 The host shield owns `zmk_display_status_screen()`. Do not combine it with

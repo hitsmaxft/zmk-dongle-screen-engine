@@ -41,6 +41,7 @@ static uint32_t last_presented, stats_deadline;
 static int measured_fps_x10=-1, published_fps_x10=-1;
 static bool transfer_failed;
 static bool startup_ready, startup_visible;
+static int backlight_percent=CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS;
 static int startup_phase;
 static unsigned startup_attempts;
 static uint32_t tile_hash[18 * 18], deadline, last_report, frames;
@@ -56,6 +57,10 @@ static void set_backlight(int percent) {
 #else
   ARG_UNUSED(percent);
 #endif
+}
+void dte_host_backlight_set(int percent) {
+  backlight_percent=CLAMP(percent,0,100);
+  if(startup_visible&&!asleep)set_backlight(backlight_percent);
 }
 static void startup_repaint_cb(struct k_work *work) {
   ARG_UNUSED(work);
@@ -82,8 +87,8 @@ static void startup_cb(struct k_work *work) {
 }
 static void reveal_startup(void) {
   if(!startup_ready||startup_visible||transfer_failed)return;
-  set_backlight(CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS);startup_visible=true;
-  LOG_INF("startup full frame sent; backlight=%d%%",CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS);
+  set_backlight(backlight_percent);startup_visible=true;
+  LOG_INF("startup full frame sent; backlight=%d%%",backlight_percent);
   if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_DIRECT_RGB565))
     k_work_reschedule_for_queue(zmk_display_work_q(),&startup_repaint_work,K_MSEC(200));
 }
@@ -173,7 +178,7 @@ static void frame_work_cb(struct k_work *work) {
     published_fps_x10=measured_fps_x10;
     stats_deadline=now+500;
   }
-  dte_set_display_stats(CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS,published_fps_x10);
+  dte_set_display_stats(backlight_percent,published_fps_x10);
   dte_set_startup_phase(startup_phase);
   dte_set_layer_name(
       zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(layer)));
@@ -443,6 +448,7 @@ static void diagnostic_cb(struct k_work *work) {
 #endif
 
 lv_obj_t *zmk_display_status_screen(void) {
+  backlight_percent=CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS;
   set_backlight(0);
   startup_ready=startup_visible=false;startup_attempts=0;startup_phase=0;
   const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
