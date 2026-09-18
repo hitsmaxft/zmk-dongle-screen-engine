@@ -27,10 +27,14 @@ dithering does not shimmer between stationary frames.
 
 The preview shell also contains a hardware-budget simulator. Its nRF52840 +
 ST7789 preset uses the board's 32 MHz SPI ceiling, direct RGB565 dirty row
-bands, a 60 FPS target and a conservative adjustable CPU slowdown. Unlimited
-and custom modes permit A/B comparison. The shell reports logical/presented
-FPS, dirty tiles, estimated render and transfer time, transfer bytes and
-dropped frames. This is a relative engineering model, not a substitute for
+bands, a default 60 FPS target and an adjustable CPU slowdown initially
+calibrated from a measured 5 FPS radar workload. This preset is only an
+initial estimate: the engine accepts arbitrary target FPS and animation
+duration, while each dongle build chooses its own target. Unlimited
+and custom modes permit A/B comparison. The shell reports logical, hardware
+budget and browser-observed FPS separately, together with dirty tiles,
+estimated render/transfer time, transfer bytes and dropped frames. This is a
+relative engineering model, not a substitute for
 on-device timing; calibrate the CPU multiplier with measured firmware data.
 
 ![English WASM preview showing the engine controls](docs/images/wasm-preview-en.png)

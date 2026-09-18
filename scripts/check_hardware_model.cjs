@@ -6,6 +6,6 @@ assert.strictEqual(model.dirtyStats(one,280,240,'bands').bytes,280*16*2);
 assert.strictEqual(model.dirtyStats(one,280,240,'packed').bytes,16*16*2);
 assert.strictEqual(model.dirtyStats(Array(15).fill(0),280,240,'packed').bytes,0);
 const cost=model.estimate(0.1,model.profiles.nrf52840,model.dirtyStats(one,280,240,'bands'));
-assert(cost.renderMs===8&&cost.transferMs>2&&cost.totalMs>cost.renderMs);
+assert(cost.renderMs===26&&cost.transferMs>2&&cost.totalMs>cost.renderMs);
 assert.deepStrictEqual(Object.keys(model.profiles).sort(),['custom','nrf52840','unlimited']);
 console.log('hardware model ok: profiles, dirty transport and cost budget');

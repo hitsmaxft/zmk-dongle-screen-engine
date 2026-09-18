@@ -2,7 +2,7 @@
 (()=>{
   const profiles={
     unlimited:{fps:60,spiMHz:32,cpuScale:1,transport:'full',unlimited:true},
-    nrf52840:{fps:60,spiMHz:32,cpuScale:80,transport:'bands',unlimited:false},
+    nrf52840:{fps:60,spiMHz:32,cpuScale:260,transport:'bands',unlimited:false},
     custom:{fps:60,spiMHz:16,cpuScale:80,transport:'bands',unlimited:false},
   };
   function dirtyStats(rows,width,height,mode){
