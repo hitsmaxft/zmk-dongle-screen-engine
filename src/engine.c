@@ -95,6 +95,7 @@ int dte_touch_hint(int kind, uint32_t now) {
 void dte_touch(int x, int y, int down, uint32_t now) {
   dte_touch_at(x,y,down,now,now);
 }
+int dte_touch_active(void) { return touch_down; }
 void dte_touch_at(int x, int y, int down, uint32_t now, uint32_t animation_time) {
   if (down && !touch_down) {
     touch_down = 1;

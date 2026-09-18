@@ -80,6 +80,9 @@ Gesture values are `DTE_TAP`, `DTE_LEFT`, `DTE_RIGHT`, `DTE_UP`, `DTE_DOWN` and
 axis movement becomes a swipe; a stationary contact held for 600 ms becomes a
 long press; a shorter stationary contact becomes a tap. `dte_touch_at()` keeps
 the physical event timestamp separate from animation dispatch time.
+`dte_touch_active()` remains nonzero from contact-down through release, allowing
+a theme to provide a reversible hold effect without treating long press as a
+latched gesture. It exposes no coordinates and does not bypass gesture dispatch.
 `dte_touch_hint()` accepts one hardware-controller gesture per contact and
 suppresses its software duplicate. `dte_touch_cancel()` clears incomplete
 contact state.

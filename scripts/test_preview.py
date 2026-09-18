@@ -9,6 +9,7 @@ import subprocess
 def verify(output):
     manifest=json.loads((output/'preview-manifest.json').read_text())
     api=C.CDLL(str((output/manifest['native_library']).resolve()));api.dte_hash.restype=C.c_uint32
+    api.dte_touch_active.restype=C.c_int
     calls=[]
     for w,h in ((280,240),(240,280),(240,240)):
         calls += [['dte_init',[w,h]],['dte_set_state',[72,0,1,1,0,87,64,93,1,1]],['dte_render',[0]]]
@@ -32,15 +33,19 @@ def verify(output):
         api.dte_init(280,240);api.dte_set_state(72,0,1,0,0,87,64,93,1,1);api.dte_gesture(1,0);api.dte_render(500)
         api.dte_touch(100,100,1,600);api.dte_render(1200)
         if release:api.dte_touch(100,100,0,1210)
+        else:api.dte_touch_cancel()
         api.dte_render(1700);return api.dte_hash()
     assert hold(True)==hold(False)
+    api.dte_init(280,240);assert api.dte_touch_active()==0
+    api.dte_touch(100,100,1,0);assert api.dte_touch_active()==1
+    api.dte_touch(100,100,0,1);assert api.dte_touch_active()==0
     # Stationary rendered output must not flicker as a result of ordered dithering.
     api.dte_init(280,240);api.dte_render(1000);first=api.dte_hash()
     api.dte_init(280,240);api.dte_render(1000);assert first==api.dte_hash()
     static=not manifest.get('continuous_animation',False)
     if static:
         api.dte_render(3000);assert first==api.dte_hash()
-    result={'native_wasm_equal_frames':len(actual),'viewports':3,'long_press_no_tap':True,'deterministic_repeat':True,'static_dither_no_shimmer':static}
+    result={'native_wasm_equal_frames':len(actual),'viewports':3,'long_press_no_tap':True,'touch_active_lifecycle':True,'deterministic_repeat':True,'static_dither_no_shimmer':static}
     (output/'test-results.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))
 
 if __name__=='__main__':

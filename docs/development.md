@@ -21,7 +21,14 @@ python3 scripts/build_preview.py \
   --variant default --output .build/default-v001
 
 python3 scripts/test_preview.py .build/default-v001
+
+node scripts/render_wasm.cjs .build/default-v001 \
+  --time 1000 --output .build/default-v001/frame-1000.png
 ```
+
+日常视觉迭代以 `render_wasm.cjs` 直接读取 WASM RGB565 framebuffer 并导出
+PNG；应先检 PNG、frame hash 与自动像素门禁。仅当修改交互控件、多语言或响应式
+布局时，方启浏览器作最终验收，勿以浏览器截图替代 framebuffer 证据。
 
 ## RGB565 visual comparison
 

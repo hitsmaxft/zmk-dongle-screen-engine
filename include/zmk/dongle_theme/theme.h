@@ -66,6 +66,8 @@ int dte_get_animation_duration(void);
 /* Optional retained theme hook; used by deterministic full-repaint tests. */
 void dte_force_redraw(void);
 void dte_touch(int x, int y, int down, uint32_t now);
+/* Nonzero while a physical or preview touch contact remains down. */
+int dte_touch_active(void);
 /* Keep sensor durations accurate without aging a newly dispatched animation. */
 void dte_touch_at(int x, int y, int down, uint32_t event_time, uint32_t animation_time);
 void dte_touch_cancel(void);

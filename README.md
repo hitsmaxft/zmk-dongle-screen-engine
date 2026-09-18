@@ -119,6 +119,22 @@ Montserrat font sources:
       --output .build/minimal-preview
     python3 scripts/test_preview.py .build/minimal-preview
 
+Render an exact WASM framebuffer directly to PNG before opening a browser:
+
+    node scripts/render_wasm.cjs .build/minimal-preview \
+      --time 1000 --output .build/minimal-preview/frame-1000.png
+
+Theme-specific integer setters may be applied with repeatable `--call
+NAME=A,B`; deterministic gestures use `--gesture KIND@MS`. The command prints
+the logical size, frame hash and PNG SHA-256. Browser inspection is reserved
+for interactive controls, localization and responsive layout rather than
+routine framebuffer review.
+
+For animation evidence, `--frames 240 --fps 24 --output frame.png` drives one
+WASM instance continuously and writes `frame-0000.png` through
+`frame-0239.png`; an external encoder may package that deterministic sequence
+as GIF, WebP or video without browser capture.
+
 Open `.build/minimal-preview/index.html` locally. The replay test requires
 Clang with wasm32 support and Node.js; it verifies matching native/WASM RGB565
 frame hashes, long-press de-duplication and stable spatial dithering.
