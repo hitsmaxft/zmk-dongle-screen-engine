@@ -3,7 +3,11 @@
 A small static theme host and RGB565 renderer for ZMK dongles. It separates
 display ownership, ZMK state projection, touch dispatch and frame transport
 from the linked visual theme. Theme code stays in its own Zephyr module and
-defines one `dte_selected_theme` descriptor.
+defines one static v1 or ABI 1.1 descriptor.
+
+Current Engine release: **1.1.0**. Engine release versions and Theme ABI
+versions are independent: Engine 1.1 retains Theme ABI v1 and adds the optional
+versioned Theme ABI 1.1.
 
 This repository contains the engine only. It does not contain downstream
 themes, artwork, generated theme atlases, or product-specific animation labs.
@@ -82,7 +86,7 @@ firmware renderer.
 
 The bootstrap ABI supports one compile-time theme, 240x240, 240x280 and
 280x240 RGB565 surfaces, WPM/layer/endpoint/modifier/battery snapshots, tap,
-long press and four swipe directions, a configurable frame deadline, fixed Bayer RGB565
+long press and four swipe directions, a configurable frame cadence, fixed Bayer RGB565
 dithering, retained tile damage and optional direct display writes.
 
 The host shield owns `zmk_display_status_screen()`. Do not combine it with
@@ -99,10 +103,14 @@ manifest, then include these shields in the dongle build:
 
     <display-and-touch-hardware> dongle_screen_host <your-theme-shield>
 
-The theme must include `zmk/dongle_theme/theme.h` and define exactly one
-`const struct dte_theme dte_selected_theme`. See `examples/minimal-theme` for a
-complete theme and preview manifest. The short [theme examples](docs/examples.md)
-page also links external visual references.
+The theme must include `zmk/dongle_theme/theme.h` and define either the frozen
+v1 `const struct dte_theme dte_selected_theme` or the additive ABI 1.1
+`const struct dte_theme_v1_1 dte_selected_theme_v1_1`. Existing v1 themes remain
+source-compatible. New integrations should use ABI 1.1 for sized structures,
+explicit validation status, fixed-width snapshots and render results. See the
+[API manual](docs/api.md), `tests/api_v1_1.c`, and `examples/minimal-theme`.
+The short [theme examples](docs/examples.md) page also links external visual
+references.
 
 Reusable RGB565 sprite and small pixel-UI helpers live in
 `zmk/dongle_theme/ui.h`; keep theme palettes, layouts, animation policy, and

@@ -2,14 +2,26 @@
 
 ## Scope
 
-`zmk-dongle-screen-engine` is a compile-time ZMK screen host. The bootstrap ABI
-links exactly one theme through `dte_selected_theme`; it does not yet implement
-a runtime registry, persistent theme selection, or a safe fallback theme.
+`zmk-dongle-screen-engine` is a compile-time ZMK screen host. It links exactly
+one Theme through the v1 `dte_selected_theme` or ABI 1.1
+`dte_selected_theme_v1_1`; it does not yet implement a runtime registry,
+persistent theme selection, or a safe fallback theme.
 
 The current host accepts 280x240, 240x280 and 240x240 displays. Its validated
 raster and transport path is RGB565. Theme-local localization, fonts and copy
 remain the theme's responsibility. The WASM preview shell localization is not
 part of the firmware ABI.
+
+The published v1 API is frozen and remains source-compatible. ABI 1.1 is additive:
+it uses separately named structures and entry points rather than extending v1
+structures in place. This is a static-link firmware ABI; it does not promise
+that separately compiled binary plugins can move between toolchains.
+
+These APIs ship in Engine 1.1.0. Engine release 1.1 and Theme ABI 1.1 are
+separate version domains; the ABI addition does not make the Engine a 2.0
+release. Compile-time Engine version macros are `DTE_ENGINE_VERSION_MAJOR`,
+`DTE_ENGINE_VERSION_MINOR`, `DTE_ENGINE_VERSION_PATCH` and
+`DTE_ENGINE_VERSION_STRING`.
 
 The preview-only hardware model reads `dtr_dirty_tiles()` after each WASM
 render, estimates full-frame, dirty-band or packed-tile transfer bytes, and
@@ -18,7 +30,9 @@ changes never reinitialize WASM or mutate the theme snapshot. The nRF52840
 preset is deliberately conservative and must be calibrated against physical
 display measurements before treating its FPS as a hardware claim.
 
-## Theme descriptor
+## Theme descriptors
+
+### Frozen v1
 
 Include `zmk/dongle_theme/theme.h` and define one descriptor:
 
@@ -32,6 +46,34 @@ is required. The host owns the buffer; a theme must neither free nor retain a
 replacement pointer.
 
 `DTE_ABI_VERSION` is currently 1. A mismatched descriptor is not mounted.
+
+### Additive ABI 1.1
+
+An ABI 1.1 Theme defines `dte_selected_theme_v1_1` with the initializer macro:
+
+    const struct dte_theme_v1_1 dte_selected_theme_v1_1 = DTE_THEME_V1_1_INIT(
+        "theme-id", DTE_THEME_CAP_GESTURE, mount, gesture, render);
+
+`struct dte_theme_v1_1`, `struct dte_snapshot_v1_1` and
+`struct dte_render_result_v1_1` begin with `abi_version` and `struct_size`.
+The Engine rejects an unknown major version or a structure shorter than its
+required prefix, and ignores a longer compatible tail. All state scalars use
+fixed-width integer types. A present but invalid ABI 1.1 descriptor is reported as
+an error and is not silently replaced by v1; when both valid descriptors are
+linked, ABI 1.1 takes precedence.
+
+`dte_validate_theme_v1_1()` validates a descriptor without mounting it.
+`dte_init_ex()` returns a `dte_status`; `dte_last_status()` reports the most
+recent status and `dte_active_abi_version()` reports 0, legacy v1 value `1`, or
+ABI 1.1 value `0x0101`. The legacy
+`dte_init()` wrapper calls the same core and discards the status.
+
+| Linked descriptors | Selected API | Invalid selection behavior |
+| --- | --- | --- |
+| v1 only | v1 | initialization returns the v1 validation error |
+| ABI 1.1 only | ABI 1.1 | initialization returns the ABI 1.1 validation error |
+| valid v1 and valid ABI 1.1 | ABI 1.1 | ABI 1.1 deterministically takes precedence |
+| valid v1 and invalid, present ABI 1.1 | none | ABI 1.1 error is returned; no silent fallback |
 
 ## State snapshot
 
@@ -49,9 +91,16 @@ Host and preview adapters update snapshots through `dte_set_state()`,
 returns a writable 24-byte bridge for environments such as WASM; call
 `dte_set_layer_name()` after writing it.
 
+ABI 1.1 uses `struct dte_snapshot_v1_1`, `DTE_SNAPSHOT_V1_1_INIT` and a `valid_mask`.
+`dte_set_snapshot_v1_1()` validates its prefix, clamps values to the same ranges
+as v1, copies the inline layer name, and ignores unknown tail bytes. Existing
+v1 setters update the ABI 1.1 snapshot too, so an unchanged ZMK host can feed an ABI 1.1
+Theme during migration.
+
 `dte_gesture_x()` and `dte_gesture_y()` expose the landscape-space touch
-origin while a theme handles a gesture. Direct button or API gestures return
-`-1`, allowing themes to retain their non-touch fallback behavior.
+origin only while a Theme handles that gesture. They return `-1` immediately
+after the callback. Direct button or API gestures return `-1` during and after
+the callback, allowing themes to retain their non-touch fallback behavior.
 `dte_backlight_adjust()` applies a bounded relative change to the runtime
 backlight and returns the new percentage; native/WASM updates the snapshot,
 while the ZMK host also applies it to the configured backlight LED.
@@ -61,9 +110,16 @@ while the ZMK host also applies it to the configured backlight LED.
 
 `dte_init(width, height)` resets engine and touch state, initializes unknown
 values, and mounts a compatible selected theme. `dte_render(now)` dispatches a
-pending long press, invokes the theme renderer and returns its animation-active
-result. `dte_pixels()`, `dte_width()`, `dte_height()` and `dte_hash()` expose the
-current frame for hosts and deterministic tests.
+pending long press, invokes the active v1 or ABI 1.1 renderer and retains its legacy
+boolean scheduling result. `dte_pixels()`, `dte_width()`, `dte_height()` and
+`dte_hash()` expose the current frame for hosts and deterministic tests.
+
+`dte_render_v1_1()` returns status and fills a caller-initialized
+`DTE_RENDER_RESULT_V1_1_INIT`. Its flags separately describe framebuffer change,
+continuous animation and an absolute monotonic `next_frame_at_ms` deadline.
+Unknown result flags are ignored. The present ZMK adapter still consumes the
+legacy boolean wrapper and therefore limits active ABI 1.1 themes at the configured
+FPS; exact deadline scheduling is not yet claimed by the firmware host.
 
 The ZMK `dongle_screen_host` shield owns `zmk_display_status_screen()` and must
 not be combined with another custom status-screen owner. State and rendering
