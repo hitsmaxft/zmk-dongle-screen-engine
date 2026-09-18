@@ -1,0 +1,69 @@
+name: Build ZDSE theme preview
+description: Build a self-contained ZDSE preview and verify native/WASM parity.
+
+inputs:
+  theme-path:
+    description: Absolute path, or workspace-relative path, to the theme directory.
+    required: true
+  lvgl-path:
+    description: Absolute path, or workspace-relative path, to an LVGL source checkout.
+    required: true
+  output-path:
+    description: Absolute path, or workspace-relative path, for generated preview files.
+    required: false
+    default: preview
+  variant:
+    description: Optional preview.json variant name.
+    required: false
+    default: ''
+
+outputs:
+  index-path:
+    description: Absolute path to the verified, self-contained index.html.
+    value: ${{ steps.preview.outputs.index-path }}
+  output-path:
+    description: Absolute path to the verified preview directory.
+    value: ${{ steps.preview.outputs.output-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install preview toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        missing=0
+        command -v clang >/dev/null 2>&1 || missing=1
+        command -v wasm-ld >/dev/null 2>&1 || missing=1
+        command -v node >/dev/null 2>&1 || missing=1
+        command -v python3 >/dev/null 2>&1 || missing=1
+        if [[ "$missing" -ne 0 ]]; then
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clang lld nodejs python3
+        fi
+
+    - name: Build and verify preview
+      id: preview
+      shell: bash
+      env:
+        ZDSE_THEME_PATH: ${{ inputs.theme-path }}
+        ZDSE_LVGL_PATH: ${{ inputs.lvgl-path }}
+        ZDSE_OUTPUT_PATH: ${{ inputs.output-path }}
+        ZDSE_VARIANT: ${{ inputs.variant }}
+      run: |
+        set -euo pipefail
+        engine_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        args=(
+          --lvgl "$ZDSE_LVGL_PATH"
+          --theme "$ZDSE_THEME_PATH"
+          --output "$ZDSE_OUTPUT_PATH"
+        )
+        if [[ -n "$ZDSE_VARIANT" ]]; then
+          args+=(--variant "$ZDSE_VARIANT")
+        fi
+        python3 "$engine_root/scripts/build_preview.py" "${args[@]}"
+        python3 "$engine_root/scripts/test_preview.py" "$ZDSE_OUTPUT_PATH"
+        output_path="$(cd "$ZDSE_OUTPUT_PATH" && pwd)"
+        test -f "$output_path/index.html"
+        printf 'output-path=%s\n' "$output_path" >> "$GITHUB_OUTPUT"
+        printf 'index-path=%s/index.html\n' "$output_path" >> "$GITHUB_OUTPUT"

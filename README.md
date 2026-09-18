@@ -5,7 +5,7 @@ display ownership, ZMK state projection, touch dispatch and frame transport
 from the linked visual theme. Theme code stays in its own Zephyr module and
 defines one static v1 or ABI 1.1 descriptor.
 
-Current Engine release: **1.1.0**. Engine release versions and Theme ABI
+Current Engine release: **1.1.1**. Engine release versions and Theme ABI
 versions are independent: Engine 1.1 retains Theme ABI v1 and adds the optional
 versioned Theme ABI 1.1.
 
@@ -151,6 +151,31 @@ as GIF, WebP or video without browser capture.
 Open `.build/minimal-preview/index.html` locally. The replay test requires
 Clang with wasm32 support and Node.js; it verifies matching native/WASM RGB565
 frame hashes, long-press de-duplication and stable spatial dithering.
+
+## GitHub Action
+
+Downstream theme repositories can build and verify the same self-contained HTML
+without copying Engine scripts:
+
+```yaml
+- uses: actions/checkout@v7
+- uses: actions/checkout@v7
+  with:
+    repository: zmkfirmware/lvgl
+    ref: f1db87ee98f1810328a8419572fa42a3b5f352ae
+    path: .preview-deps/lvgl
+- id: preview
+  uses: hitsmaxft/zmk-dongle-screen-engine/.github/actions/build-preview@v1.1.1
+  with:
+    theme-path: themes/my-theme
+    lvgl-path: .preview-deps/lvgl
+    output-path: site/my-theme
+```
+
+The Action installs the Linux Clang/WASM toolchain when necessary, builds the
+native and WASM renderers, runs parity replay, and exposes `index-path` and
+`output-path` only after verification succeeds. Pin the Engine tag and LVGL
+revision in release workflows.
 
 ## License
 

@@ -15,8 +15,9 @@ visual gallery and code reference:
 - **Phosphor Radar** is a complete procedural theme with retained redraws,
   gestures, and custom preview controls.
 
-The gallery publishes final preview images and theme behavior only. Original
-artwork, fonts, sprite sheets, and generated atlas payloads are not public.
+The gallery publishes final preview images, generated C payloads, and theme
+behavior. Original artwork, sprite sheets, and asset-generation tools remain
+private.
 
 Use the Engine for shared raster, sprite, touch, and pixel-UI utilities. Keep
 motion, layout, palette, composition, and private assets in the theme or its

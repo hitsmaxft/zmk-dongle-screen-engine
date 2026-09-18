@@ -17,7 +17,7 @@ it uses separately named structures and entry points rather than extending v1
 structures in place. This is a static-link firmware ABI; it does not promise
 that separately compiled binary plugins can move between toolchains.
 
-These APIs ship in Engine 1.1.0. Engine release 1.1 and Theme ABI 1.1 are
+These APIs ship in Engine 1.1.1. Engine release 1.1 and Theme ABI 1.1 are
 separate version domains; the ABI addition does not make the Engine a 2.0
 release. Compile-time Engine version macros are `DTE_ENGINE_VERSION_MAJOR`,
 `DTE_ENGINE_VERSION_MINOR`, `DTE_ENGINE_VERSION_PATCH` and

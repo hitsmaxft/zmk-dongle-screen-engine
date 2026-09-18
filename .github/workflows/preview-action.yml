@@ -1,0 +1,54 @@
+name: Preview Action
+
+on:
+  pull_request:
+    paths:
+      - '.github/actions/build-preview/**'
+      - '.github/workflows/preview-action.yml'
+      - 'examples/minimal-theme/**'
+      - 'include/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'web/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/actions/build-preview/**'
+      - '.github/workflows/preview-action.yml'
+      - 'examples/minimal-theme/**'
+      - 'include/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'web/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  minimal-theme:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out Engine
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out LVGL
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zmkfirmware/lvgl
+          ref: f1db87ee98f1810328a8419572fa42a3b5f352ae
+          path: .preview-deps/lvgl
+
+      - name: Build minimal preview
+        id: preview
+        uses: ./.github/actions/build-preview
+        with:
+          theme-path: examples/minimal-theme
+          lvgl-path: .preview-deps/lvgl
+          output-path: .build/minimal-action-preview
+
+      - name: Check Action output
+        shell: bash
+        env:
+          ZDSE_INDEX_PATH: ${{ steps.preview.outputs.index-path }}
+        run: test -s "$ZDSE_INDEX_PATH"

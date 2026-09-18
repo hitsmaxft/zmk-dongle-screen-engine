@@ -65,3 +65,10 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 
 动画比较须固定 snapshot 与 timestamp。先验证静态关键帧，再比较动作序列；
 逻辑 60Hz 只约束 deadline，实机 SPI 帧率仍须以固件日志及屏幕结果验证。
+
+## GitHub Actions preview
+
+公开主题仓可调用 `.github/actions/build-preview`，以主题目录、LVGL checkout
+及输出目录为输入。Action 仅于 native/WASM parity 通过后公布自含式
+`index.html` 路径；GitHub Pages workflow 只须汇集各主题输出并上传静态目录。
+发布流程应锁定 Engine tag 与 LVGL commit，勿从下游复制编译命令。
