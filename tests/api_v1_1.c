@@ -8,7 +8,7 @@
 _Static_assert(DTE_ABI_VERSION == 1, "v1 version macro changed");
 _Static_assert(DTE_ENGINE_VERSION_MAJOR == 1u, "engine major version changed");
 _Static_assert(DTE_ENGINE_VERSION_MINOR == 1u, "engine minor version changed");
-_Static_assert(DTE_ENGINE_VERSION_PATCH == 1u, "engine patch version changed");
+_Static_assert(DTE_ENGINE_VERSION_PATCH == 2u, "engine patch version changed");
 _Static_assert(DTE_TAP == 1 && DTE_LONG_PRESS == 6,
                "v1 gesture values changed");
 _Static_assert(sizeof(struct dte_snapshot) == 80,

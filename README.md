@@ -5,7 +5,7 @@ display ownership, ZMK state projection, touch dispatch and frame transport
 from the linked visual theme. Theme code stays in its own Zephyr module and
 defines one static v1 or ABI 1.1 descriptor.
 
-Current Engine release: **1.1.1**. Engine release versions and Theme ABI
+Current Engine release: **1.1.2**. Engine release versions and Theme ABI
 versions are independent: Engine 1.1 retains Theme ABI v1 and adds the optional
 versioned Theme ABI 1.1.
 
@@ -165,7 +165,7 @@ without copying Engine scripts:
     ref: f1db87ee98f1810328a8419572fa42a3b5f352ae
     path: .preview-deps/lvgl
 - id: preview
-  uses: hitsmaxft/zmk-dongle-screen-engine/.github/actions/build-preview@v1.1.1
+  uses: hitsmaxft/zmk-dongle-screen-engine/.github/actions/build-preview@v1.1.2
   with:
     theme-path: themes/my-theme
     lvgl-path: .preview-deps/lvgl
