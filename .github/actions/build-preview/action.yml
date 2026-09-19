@@ -16,6 +16,10 @@ inputs:
     description: Optional preview.json variant name.
     required: false
     default: ''
+  all-variants:
+    description: Build every profile_variants entry into one selectable page.
+    required: false
+    default: 'false'
 
 outputs:
   index-path:
@@ -50,6 +54,7 @@ runs:
         ZDSE_LVGL_PATH: ${{ inputs.lvgl-path }}
         ZDSE_OUTPUT_PATH: ${{ inputs.output-path }}
         ZDSE_VARIANT: ${{ inputs.variant }}
+        ZDSE_ALL_VARIANTS: ${{ inputs.all-variants }}
       run: |
         set -euo pipefail
         engine_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
@@ -58,11 +63,15 @@ runs:
           --theme "$ZDSE_THEME_PATH"
           --output "$ZDSE_OUTPUT_PATH"
         )
-        if [[ -n "$ZDSE_VARIANT" ]]; then
+        if [[ "$ZDSE_ALL_VARIANTS" == "true" ]]; then
+          args+=(--all-variants)
+        elif [[ -n "$ZDSE_VARIANT" ]]; then
           args+=(--variant "$ZDSE_VARIANT")
         fi
         python3 "$engine_root/scripts/build_preview.py" "${args[@]}"
-        python3 "$engine_root/scripts/test_preview.py" "$ZDSE_OUTPUT_PATH"
+        if [[ "$ZDSE_ALL_VARIANTS" != "true" ]]; then
+          python3 "$engine_root/scripts/test_preview.py" "$ZDSE_OUTPUT_PATH"
+        fi
         output_path="$(cd "$ZDSE_OUTPUT_PATH" && pwd)"
         test -f "$output_path/index.html"
         printf 'output-path=%s\n' "$output_path" >> "$GITHUB_OUTPUT"
