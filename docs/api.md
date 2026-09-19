@@ -23,6 +23,14 @@ release. Compile-time Engine version macros are `DTE_ENGINE_VERSION_MAJOR`,
 `DTE_ENGINE_VERSION_MINOR`, `DTE_ENGINE_VERSION_PATCH` and
 `DTE_ENGINE_VERSION_STRING`.
 
+The `preview/v2.0` branch additionally contains the opt-in, experimental `.zds`
+Format 1 envelope validator and ABI 2.x declarations under
+`zmk/dongle_theme/v2/`. They do not replace either published Theme ABI and are
+excluded unless `CONFIG_ZMK_DONGLE_SCREEN_ENGINE_V2_PREVIEW=y`. The frozen byte
+envelope and validation bounds are documented in
+[zds-format-1.md](zds-format-1.md); scene/runtime records remain preview work,
+not a released 2.0 claim.
+
 The preview-only hardware model reads `dtr_dirty_tiles()` after each WASM
 render, estimates full-frame, dirty-band or packed-tile transfer bytes, and
 throttles presentation by target FPS plus estimated CPU/SPI cost. Profile
