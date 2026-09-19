@@ -14,7 +14,7 @@ on:
       - 'tests/**'
       - 'web/**'
   push:
-    branches: [main]
+    branches: [main, preview/v2.0]
     paths:
       - '.github/actions/build-preview/**'
       - '.github/workflows/preview-action.yml'
