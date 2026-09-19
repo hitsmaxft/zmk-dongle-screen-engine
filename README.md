@@ -12,6 +12,14 @@ versioned Theme ABI 1.1.
 This repository contains the engine only. It does not contain downstream
 themes, artwork, generated theme atlases, or product-specific animation labs.
 
+## Agent entry points
+
+Agents should begin with [AGENTS.md](AGENTS.md) for repository constraints.
+Task-specific guidance lives under `skills/`; typography, font generation and
+glyph-icon work must follow the [UI design skill](skills/ui-design/SKILL.md).
+The [API manual](docs/api.md) and [development guide](docs/development.md) are
+the corresponding entry points for interface and build/preview work.
+
 ![Localized WASM theme preview with live state and gesture controls](docs/images/wasm-preview-zh.png)
 
 ## Highlights
@@ -116,6 +124,22 @@ Reusable RGB565 sprite and small pixel-UI helpers live in
 `zmk/dongle_theme/ui.h`; keep theme palettes, layouts, animation policy, and
 asset payloads in the theme module.
 
+### Typography and icon fonts
+
+![Recommended ZDSE font specimens](docs/images/font-recommendations.png)
+
+Use [Spleen](https://github.com/fcambus/spleen) for compact Latin status text
+and [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font) for small
+multilingual pixel UI. Use LVGL's Montserrat for large labels and values, and a
+strictly subsetted JetBrains Mono NL Nerd Font Mono for modifier/status icons.
+The specimen shows Spleen 8x16 and Fusion Pixel Font 12 px at 2x nearest-neighbor
+scale, plus Montserrat and Nerd Font at 40 px.
+
+Font payloads remain opt-in theme assets and are not linked into Engine by
+default. Theme authors and agents should use the
+[UI design skill](skills/ui-design/SKILL.md) for selection, subsetting,
+licensing and RGB565 validation rules; this README is only the short overview.
+
 Useful Kconfig options include `ZMK_DONGLE_SCREEN_FPS`,
 `ZMK_DONGLE_SCREEN_BRIGHTNESS`, `ZMK_DONGLE_SCREEN_DIRECT_RGB565`,
 `ZMK_DONGLE_SCREEN_PACKED_RECTS` and `ZMK_DONGLE_SCREEN_DONGLE_BATTERY`.
@@ -152,6 +176,19 @@ Open `.build/minimal-preview/index.html` locally. The replay test requires
 Clang with wasm32 support and Node.js; it verifies matching native/WASM RGB565
 frame hashes, long-press de-duplication and stable spatial dithering.
 
+Themes with `variants` may also declare `common_sources`,
+`profile_variants`, and localized-independent `variant_display_names`. Build
+all declared profiles into one verified, self-contained page with:
+
+    python3 scripts/build_preview.py \
+      --lvgl /path/to/lvgl --theme /path/to/theme \
+      --all-variants --output .build/theme-profiles
+
+Each profile is linked and native/WASM parity-tested independently. The page
+switches cached modules without reloading, reapplies Engine-visible state and
+logical time, and forces a clean redraw. Existing single-source and
+`--variant` commands retain their prior output contract.
+
 ## GitHub Action
 
 Downstream theme repositories can build and verify the same self-contained HTML
@@ -170,6 +207,7 @@ without copying Engine scripts:
     theme-path: themes/my-theme
     lvgl-path: .preview-deps/lvgl
     output-path: site/my-theme
+    # all-variants: 'true'  # optional profile bundle
 ```
 
 The Action installs the Linux Clang/WASM toolchain when necessary, builds the

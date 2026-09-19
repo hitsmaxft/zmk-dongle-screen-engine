@@ -1,12 +1,17 @@
 (async()=>{
-  const {instance}=await WebAssembly.instantiate(Uint8Array.from(atob(WASM_BASE64),x=>x.charCodeAt(0)));
-  const api=instance.exports,model=window.dteHardwareModel,canvas=document.querySelector('#screen'),ctx=canvas.getContext('2d',{alpha:false});
+  const bundle=WASM_PROFILE_BUNDLE||{default:'default',profiles:{default:{name:'Default',wasm:WASM_BASE64}}},moduleCache=new Map();
+  let activeProfile=bundle.default,api;
+  async function loadModule(name){const data=bundle.profiles[name].wasm;let module=moduleCache.get(data);if(!module){module=WebAssembly.compile(Uint8Array.from(atob(data),x=>x.charCodeAt(0)));moduleCache.set(data,module);}return WebAssembly.instantiate(await module);}
+  api=(await loadModule(activeProfile)).exports;
+  const model=window.dteHardwareModel,canvas=document.querySelector('#screen'),ctx=canvas.getContext('2d',{alpha:false});
   let time=0,last=null,running=true,demo=true,index=0,mods=0,offline=false,unknown=false,statusMode='auto',lastAction=0;
   let hardwareReadyAt=0,nextFrameAt=0,metricsStart=0,logicalCount=0,presentedCount=0,droppedCount=0;
   let logicalFps=60,presentedFps=60,browserFps=0,droppedPercent=0,lastWasmMs=0,lastTransfer={tiles:0,bytes:0,rects:0},lastEstimate={renderMs:0,transferMs:0,totalMs:0};
   const sequence=[[900,0],[2000,2],[3400,4],[4300,3],[5600,-1],[7000,2],[8500,3],[9600,6]];
   api.dte_init(280,240);
   function $(s){return document.getElementById(s);}
+  const profileNames=Object.keys(bundle.profiles),profileSelect=$('render-profile');
+  for(const name of profileNames){const option=document.createElement('option');option.value=name;option.textContent=bundle.profiles[name].name||name;profileSelect.append(option);}profileSelect.value=activeProfile;$('render-profile-field').hidden=profileNames.length<2;
   function state(){api.dte_set_battery_count(+$('battery-count').value);api.dte_set_display_stats?.(40,Math.round(presentedFps*10));api.dte_set_state(+$('wpm').value,+$('layer').value,+$('endpoint').value,1,mods,unknown?-1:+$('split0-battery').value,unknown?-1:+$('split1-battery').value,unknown?-1:+$('dongle-battery').value,1,offline?0:1);setName($('layer').selectedOptions[0].text);}
   function setName(s){const ptr=api.dte_name_buffer();const b=new Uint8Array(api.memory.buffer,ptr,24);b.fill(0);b.set(new TextEncoder().encode(s).slice(0,23));api.dte_set_layer_name(ptr);}
   function hardwareProfile(){const preset=model.profiles[$('hardware-profile').value];if(preset?.unlimited)return preset;return {fps:+$('target-fps').value,spiMHz:+$('spi-clock').value,cpuScale:+$('cpu-scale').value,transport:$('transport').value,unlimited:false};}
@@ -22,16 +27,23 @@
   function markCustom(){if($('hardware-profile').value!=='custom')$('hardware-profile').value='custom';for(const id of ['target-fps','spi-clock','cpu-scale','transport'])$(id).disabled=false;updateOutputs();hardwareReadyAt=nextFrameAt=time;}
   function tick(t){if(last===null){last=t;metricsStart=t;}if(running){time+=Math.min(t-last,100);if(demo){while(index<sequence.length&&time>=sequence[index][0]){const [at,g]=sequence[index];if(g<=0){$('wpm').value=g===0?128:72;$('wpm-value').value=$('wpm').value;state();api.dte_render(at);}else api.dte_gesture(g,at);index++;}if(time>11000)reset();}const profile=hardwareProfile(),interval=1000/profile.fps;if(!nextFrameAt)nextFrameAt=time;if(time+0.01>=nextFrameAt){const due=Math.max(1,Math.floor((time-nextFrameAt)/interval)+1);logicalCount+=due;nextFrameAt+=due*interval;if(profile.unlimited||time>=hardwareReadyAt)renderFrame(true);else droppedCount+=due;if(time-nextFrameAt>1000)nextFrameAt=time+interval;}}if(t-metricsStart>=500){const elapsed=t-metricsStart,profile=hardwareProfile();browserFps=presentedCount*1000/elapsed;logicalFps=profile.fps;const budget=profile.unlimited?profile.fps:(lastEstimate.totalMs>0?1000/lastEstimate.totalMs:profile.fps);presentedFps=Math.min(profile.fps,budget);droppedPercent=logicalFps?Math.max(0,(logicalFps-presentedFps)*100/logicalFps):0;logicalCount=presentedCount=droppedCount=0;metricsStart=t;updateMetrics();}last=t;requestAnimationFrame(tick);}
   function reset(){time=0;index=0;hardwareReadyAt=nextFrameAt=0;$('wpm').value=72;$('wpm-value').value=72;api.dte_init(...$('resolution').value.split(',').map(Number));state();demo=true;running=true;statusMode='auto';renderFrame(false);localizeDynamic();}
+  async function switchRenderProfile(name){
+    if(name===activeProfile)return;const animation=api.dte_get_animation?.(),duration=api.dte_get_animation_duration?.();
+    api=(await loadModule(name)).exports;activeProfile=name;api.dte_init(...$('resolution').value.split(',').map(Number));state();
+    if(animation!==undefined)api.dte_set_animation?.(animation);if(duration!==undefined)api.dte_set_animation_duration?.(duration);api.dte_force_redraw?.();renderFrame(false);
+    document.dispatchEvent(new CustomEvent('dte-profile-change',{detail:{profile:name}}));
+  }
   $('gauge').onclick=()=>action(3);$('information').onclick=()=>action(2);$('style').onclick=()=>action(1);$('page').onclick=()=>action(4);
   for(const id of ['wpm','layer','endpoint'])$(id).oninput=()=>{$('wpm-value').value=$('wpm').value;state();renderFrame(false);};
   for(const prefix of ['dongle','split0','split1'])$(prefix+'-battery').oninput=()=>{const v=+$(prefix+'-battery').value;$(prefix+'-value').textContent=v<0?'--':v+'%';state();renderFrame(false);};
   $('battery-count').onchange=()=>{state();renderFrame(false);};$('mods').onclick=e=>{const bit=+e.target.dataset.mod;if(!bit)return;mods^=bit;e.target.classList.toggle('active');state();renderFrame(false);};
   $('disconnect').onclick=()=>{offline=!offline;$('disconnect').classList.toggle('active',offline);state();renderFrame(false);};$('unknown').onclick=()=>{unknown=!unknown;$('unknown').classList.toggle('active',unknown);state();renderFrame(false);};
   $('hardware-profile').onchange=e=>applyProfile(e.target.value);for(const id of ['target-fps','spi-clock','cpu-scale','transport'])$(id).oninput=markCustom;
+  profileSelect.onchange=e=>switchRenderProfile(e.target.value).catch(error=>{profileSelect.value=activeProfile;$('error').textContent=window.dteI18n.t('load_error')+error.message;});
   $('resolution').onchange=reset;$('play').onclick=()=>{running=!running;localizeDynamic();};$('step').onclick=()=>{running=false;time+=1000/hardwareProfile().fps;renderFrame(true);localizeDynamic();};$('replay').onclick=reset;
   let contact=null,hold=null;function pointer(e,down){const r=canvas.getBoundingClientRect();api.dte_touch(Math.round((e.clientX-r.left)*canvas.width/r.width),Math.round((e.clientY-r.top)*canvas.height/r.height),down,Math.round(time));renderFrame(false);}
   canvas.onpointerdown=e=>{demo=false;canvas.setPointerCapture(e.pointerId);contact={time};pointer(e,1);hold=setTimeout(()=>{if(contact){time=Math.max(time,contact.time+600);renderFrame(false);}},600);};canvas.onpointermove=e=>{if(contact)pointer(e,1);};canvas.onpointerup=e=>{clearTimeout(hold);if(!contact)return;pointer(e,0);contact=null;statusMode='gesture';localizeDynamic();};canvas.onpointercancel=()=>{clearTimeout(hold);contact=null;api.dte_touch_cancel();};
-  document.addEventListener('dte-locale-change',localizeDynamic);window.dtePreview={api,drawAt(t){time=t;demo=false;running=false;renderFrame(false);localizeDynamic();},gesture(g,t){api.dte_gesture(g,t);},reset(w=280,h=240){api.dte_init(w,h);state();},hash:()=>api.dte_hash()>>>0,time:()=>time,draw:()=>renderFrame(false),hardware:()=>({profile:hardwareProfile(),transfer:lastTransfer,estimate:lastEstimate,presentedFps,droppedPercent})};
+  document.addEventListener('dte-locale-change',localizeDynamic);window.dtePreview={get api(){return api;},get renderProfile(){return activeProfile;},switchProfile:switchRenderProfile,drawAt(t){time=t;demo=false;running=false;renderFrame(false);localizeDynamic();},gesture(g,t){api.dte_gesture(g,t);},reset(w=280,h=240){api.dte_init(w,h);state();},hash:()=>api.dte_hash()>>>0,time:()=>time,draw:()=>renderFrame(false),hardware:()=>({profile:hardwareProfile(),transfer:lastTransfer,estimate:lastEstimate,presentedFps,droppedPercent})};
   document.dispatchEvent(new CustomEvent('dte-preview-ready'));
   applyProfile('nrf52840');reset();requestAnimationFrame(tick);
 })().catch(e=>{document.getElementById('error').textContent=window.dteI18n.t('load_error')+e.message;document.getElementById('status').textContent=window.dteI18n.t('reload');});

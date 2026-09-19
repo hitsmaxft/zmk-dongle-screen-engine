@@ -1,5 +1,12 @@
 # Repository rules
 
+## Agent navigation and skills
+
+- Use `README.md` for repository scope and human-facing orientation. Use this file for repository constraints, and use task-specific `skills/*/SKILL.md` files for the corresponding implementation guidance.
+- Skill links are repository-relative. When a task matches a listed trigger, read the linked `SKILL.md` completely before changing source, generated assets or documentation in that area.
+- For typography, font generation, text layout or glyph icons, read [the UI design skill](skills/ui-design/SKILL.md). Its font-selection and validation guidance is authoritative; the README contains only a short public summary.
+- For API work, read `docs/api.md`; for build and preview work, read `docs/development.md`. Keep their claims synchronized with implemented behavior.
+
 ## WASM preview localization
 
 - All user-facing text in the WASM preview shell under `web/` MUST be localized.
@@ -14,3 +21,8 @@
 - The engine MAY bundle small language-neutral bitmap fonts and raster primitives. Font availability does not imply engine-owned localization.
 - Preview-shell language changes MUST NOT mutate the theme framebuffer unless the theme independently defines such an API.
 - Keep `docs/api.md` synchronized with exported headers and current implementation limits. Do not document planned registry, fallback or display-format support as implemented.
+
+## UI typography invariants
+
+- Keep theme-specific font payloads and subsets in the theme module. Do not add optional fonts to the default Engine build merely because Engine provides conversion or rendering helpers.
+- Validate fonts at native resolution in RGB565; browser-scaled previews are inspection aids, not physical-panel legibility evidence.
