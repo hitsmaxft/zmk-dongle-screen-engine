@@ -9,9 +9,10 @@ on:
       - 'include/**'
       - 'scripts/**'
       - 'src/**'
+      - 'tests/**'
       - 'web/**'
   push:
-    branches: [main]
+    branches: [main, preview/v2.0]
     paths:
       - '.github/actions/build-preview/**'
       - '.github/workflows/preview-action.yml'
@@ -19,6 +20,7 @@ on:
       - 'include/**'
       - 'scripts/**'
       - 'src/**'
+      - 'tests/**'
       - 'web/**'
   workflow_dispatch:
 
