@@ -90,3 +90,13 @@ The public C declarations are in
 `include/zmk/dongle_theme/v2/{result,source,pack}.h`. Format and Runtime FFI
 versions are separate: this file describes pack format 1.0, while those C
 records negotiate ABI 2.x by sized prefixes and required capability masks.
+
+## Cross-language corpus
+
+`tests/fixtures/zds-format1` is generated deterministically by
+`scripts/generate_zds_fixtures.py`. It contains unaligned-valid, optional-
+extension, truncated, CRC, overflow, ordering, alignment, duplicate-section
+and unsupported-feature cases. `tests/pack_v2.c` and the independent
+`rust/zdse-pack` reader decode the same bytes and CI diffs their status, header,
+root-ID and CRC reports exactly. The Rust library is `#![no_std]`, contains no
+unsafe code and does not share parser implementation with C.

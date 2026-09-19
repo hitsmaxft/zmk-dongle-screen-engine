@@ -126,7 +126,8 @@ references.
 The `preview/v2.0` branch begins the opt-in language-neutral `.zds` path. Its
 currently frozen wire envelope and validation bounds are documented in
 [docs/zds-format-1.md](docs/zds-format-1.md); enabling it does not replace the
-published v1 or ABI 1.1 Theme paths.
+published ABI 1.2 Theme path. The allocation-free C validator and independent
+`no_std` Rust reader consume the same deterministic fixture corpus in CI.
 
 Reusable RGB565 sprite and small pixel-UI helpers live in
 `zmk/dongle_theme/ui.h`; keep theme palettes, layouts, animation policy, and

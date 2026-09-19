@@ -15,7 +15,7 @@ ABI is rejected; it is never silently downgraded.
 
 The `preview/v2.0` branch additionally contains the opt-in, experimental `.zds`
 Format 1 envelope validator and ABI 2.x declarations under
-`zmk/dongle_theme/v2/`. They do not replace either published Theme ABI and are
+`zmk/dongle_theme/v2/`. They do not replace the published Theme ABI and are
 excluded unless `CONFIG_ZMK_DONGLE_SCREEN_ENGINE_V2_PREVIEW=y`. The frozen byte
 envelope and validation bounds are documented in
 [zds-format-1.md](zds-format-1.md); scene/runtime records remain preview work,

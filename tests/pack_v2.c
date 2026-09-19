@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
+#include <inttypes.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <zmk/dongle_theme/v2/pack.h>
@@ -114,12 +116,12 @@ static void memory_unmap(void *user_data, const uint8_t *pointer,
   source->unmaps++;
 }
 
-static zdse_result_t validate(uint8_t *pack, int map,
-                              struct zdse_pack_info_v2 *info,
-                              struct memory_source *memory) {
+static zdse_result_t validate_size(const uint8_t *pack, uint32_t size, int map,
+                                   struct zdse_pack_info_v2 *info,
+                                   struct memory_source *memory) {
   _Alignas(4) uint8_t scratch[ZDSE_PACK_QUERY_SCRATCH_BYTES];
   struct zdse_asset_source_v2 source = ZDSE_ASSET_SOURCE_V2_INIT;
-  *memory = (struct memory_source){.bytes = pack, .size = PACK_SIZE};
+  *memory = (struct memory_source){.bytes = pack, .size = size};
   source.user_data = memory;
   source.read = memory_read;
   if (map) {
@@ -130,7 +132,65 @@ static zdse_result_t validate(uint8_t *pack, int map,
   return zdse_pack_validate(&source, scratch, sizeof(scratch), info);
 }
 
-int main(void) {
+static zdse_result_t validate(uint8_t *pack, int map,
+                              struct zdse_pack_info_v2 *info,
+                              struct memory_source *memory) {
+  return validate_size(pack, PACK_SIZE, map, info, memory);
+}
+
+static zdse_result_t validate_fixture(const char *name,
+                                      struct zdse_pack_info_v2 *info) {
+  char path[192];
+  uint8_t bytes[256];
+  struct memory_source memory;
+  int length = snprintf(path, sizeof(path), "tests/fixtures/zds-format1/%s", name);
+  assert(length > 0 && (size_t)length < sizeof(path));
+  FILE *file = fopen(path, "rb");
+  assert(file != NULL);
+  size_t size = fread(bytes, 1, sizeof(bytes), file);
+  assert(!ferror(file) && feof(file));
+  assert(fclose(file) == 0);
+  return validate_size(bytes, (uint32_t)size, 0, info, &memory);
+}
+
+static const char *const corpus_names[] = {
+    "valid-minimal.zds",
+    "valid-unknown-optional.zds",
+    "bad-truncated.zds",
+    "bad-crc.zds",
+    "bad-section-overflow.zds",
+    "bad-section-order.zds",
+    "bad-required-feature.zds",
+    "bad-required-section.zds",
+    "bad-record-product.zds",
+    "bad-alignment.zds",
+    "bad-reserved.zds",
+    "bad-duplicate-section.zds",
+};
+
+static void print_corpus_report(void) {
+  for (size_t index = 0;
+       index < sizeof(corpus_names) / sizeof(corpus_names[0]); index++) {
+    struct zdse_pack_info_v2 info = ZDSE_PACK_INFO_V2_INIT;
+    zdse_result_t result = validate_fixture(corpus_names[index], &info);
+    if (result == ZDSE_OK) {
+      printf("%s\t%d\t%" PRIu32 "\t%" PRIu32 "\t%08" PRIx32
+             "\t%08" PRIx32 "\t%08" PRIx32 "\t%08" PRIx32 "\n",
+             corpus_names[index], result, info.total_size, info.section_count,
+             info.required_features, info.optional_features,
+             info.root_scene_id, info.crc32);
+    } else {
+      printf("%s\t%d\t0\t0\t00000000\t00000000\t00000000\t00000000\n",
+             corpus_names[index], result);
+    }
+  }
+}
+
+int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--corpus-report") == 0) {
+    print_corpus_report();
+    return 0;
+  }
   uint8_t storage[PACK_SIZE + 1];
   uint8_t *pack = storage + 1; /* Deliberately unaligned pack bytes. */
   struct memory_source memory;
@@ -206,6 +266,28 @@ int main(void) {
   info = (struct zdse_pack_info_v2)ZDSE_PACK_INFO_V2_INIT;
   info.abi_version = UINT16_C(0x0201); /* Newer caller minor is accepted. */
   assert(validate(pack, 0, &info, &memory) == ZDSE_OK);
+
+  info = (struct zdse_pack_info_v2)ZDSE_PACK_INFO_V2_INIT;
+  assert(validate_fixture("valid-minimal.zds", &info) == ZDSE_OK);
+  assert(info.total_size == PACK_SIZE && info.section_count == 2 &&
+         info.root_scene_id == UINT32_C(0x12345678));
+  assert(validate_fixture("valid-unknown-optional.zds", &info) == ZDSE_OK);
+  assert(validate_fixture("bad-truncated.zds", &info) == ZDSE_ERR_CALLBACK);
+  assert(validate_fixture("bad-crc.zds", &info) == ZDSE_ERR_CRC);
+  assert(validate_fixture("bad-section-overflow.zds", &info) ==
+         ZDSE_ERR_BAD_PACK);
+  assert(validate_fixture("bad-section-order.zds", &info) ==
+         ZDSE_ERR_BAD_PACK);
+  assert(validate_fixture("bad-required-feature.zds", &info) ==
+         ZDSE_ERR_UNSUPPORTED_FEATURE);
+  assert(validate_fixture("bad-required-section.zds", &info) ==
+         ZDSE_ERR_UNSUPPORTED_FEATURE);
+  assert(validate_fixture("bad-record-product.zds", &info) ==
+         ZDSE_ERR_BAD_PACK);
+  assert(validate_fixture("bad-alignment.zds", &info) == ZDSE_ERR_BAD_PACK);
+  assert(validate_fixture("bad-reserved.zds", &info) == ZDSE_ERR_BAD_PACK);
+  assert(validate_fixture("bad-duplicate-section.zds", &info) ==
+         ZDSE_ERR_BAD_PACK);
 
   return 0;
 }
