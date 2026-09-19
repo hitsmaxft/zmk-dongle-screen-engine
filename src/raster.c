@@ -1,71 +1,174 @@
-#include <zmk/dongle_theme/raster.h>
-#include <zmk/dongle_theme/metal_sample.h>
 #include "dongle_raster_assets.h"
+#include <zmk/dongle_theme/metal_sample.h>
+#include <zmk/dongle_theme/raster.h>
 uint32_t dtr_profile_cycles[3];
 #if defined(__ZEPHYR__) && defined(CONFIG_LOG)
 #include <zephyr/kernel.h>
 #define PROFILE_BEGIN uint32_t profile_start = k_cycle_get_32()
-#define PROFILE_END(i) (dtr_profile_cycles[i] += k_cycle_get_32() - profile_start)
+#define PROFILE_END(i)                                                         \
+  (dtr_profile_cycles[i] += k_cycle_get_32() - profile_start)
 #else
 #define PROFILE_BEGIN
 #define PROFILE_END(i)
 #endif
-static int W,H;
+static int W, H, OX, OY, TW, TH, STRIDE, region_override;
 static uint16_t *fb;
 static uint32_t damage[18];
-static int damage_enabled,hide_text;
-static int density_mask=255;
-static int density_pattern,density_cx,density_cy,density_inner,density_outer;
+static int damage_enabled, hide_text;
+static int density_mask = 255;
+static int density_pattern, density_cx, density_cy, density_inner,
+    density_outer;
 struct dtr_clip_rect dtr_clip;
-void dtr_begin(uint16_t *pixels,int w,int h){fb=pixels;W=w;H=h;damage_enabled=hide_text=0;dtr_clip=(struct dtr_clip_rect){0,0,w,h};}
-void dtr_damage_begin(void){damage_enabled=1;for(int i=0;i<18;i++)damage[i]=0;}
-void dtr_damage_all(void){for(int y=0;y<(H+15)/16;y++)damage[y]=(1u<<((W+15)/16))-1;}
-const uint32_t *dtr_dirty_tiles(void){return damage_enabled?damage:0;}
-int dtr_damage_any(void){for(int y=0;y<18;y++)if(damage[y])return 1;return 0;}
-static int dirty_pixel(int x,int y){return !damage_enabled||(damage[y>>4]&(1u<<(x>>4)));}
-static int dirty_rect(int x,int y,int w,int h){
-  if(x<0){w+=x;x=0;}if(y<0){h+=y;y=0;}
-  if(x+w>W)w=W-x;
-  if(y+h>H)h=H-y;
-  if(w<=0||h<=0)return 0;
-  if(!damage_enabled)return 1;
-  uint32_t mask=((1u<<((x+w-1)/16+1))-1)^((1u<<(x/16))-1);
-  for(int row=y/16;row<=(y+h-1)/16;row++)if(damage[row]&mask)return 1;
+void dtr_begin(uint16_t *pixels, int w, int h) {
+  if (region_override) {
+    hide_text = 0;
+    return;
+  }
+  fb = pixels;
+  W = w;
+  H = h;
+  OX = OY = 0;
+  TW = w;
+  TH = h;
+  STRIDE = w;
+  damage_enabled = hide_text = 0;
+  dtr_clip = (struct dtr_clip_rect){0, 0, w, h};
+}
+void dtr_begin_canvas(const struct dte_canvas *canvas) {
+  fb = canvas->pixels;
+  W = canvas->scene_width;
+  H = canvas->scene_height;
+  OX = canvas->origin_x;
+  OY = canvas->origin_y;
+  TW = canvas->width;
+  TH = canvas->height;
+  STRIDE = canvas->stride_pixels;
+  region_override = 1;
+  hide_text = 0;
+  dtr_clip = (struct dtr_clip_rect){OX, OY, OX + TW, OY + TH};
+}
+void dtr_end_canvas(void) {
+  region_override = 0;
+  fb = NULL;
+  TW = TH = STRIDE = 0;
+}
+int dtr_is_dry_run(void) { return fb == NULL; }
+void dtr_damage_begin(void) {
+  if (region_override)
+    return;
+  damage_enabled = 1;
+  for (int i = 0; i < 18; i++)
+    damage[i] = 0;
+}
+void dtr_damage_all(void) {
+  if (region_override)
+    return;
+  for (int y = 0; y < (H + 15) / 16; y++)
+    damage[y] = (1u << ((W + 15) / 16)) - 1;
+}
+const uint32_t *dtr_dirty_tiles(void) { return damage_enabled ? damage : 0; }
+int dtr_damage_any(void) {
+  if (region_override)
+    return 1;
+  for (int y = 0; y < 18; y++)
+    if (damage[y])
+      return 1;
   return 0;
 }
-void dtr_damage_rect(int x,int y,int w,int h){
-  if(x<0){w+=x;x=0;}if(y<0){h+=y;y=0;}
-  if(x+w>W)w=W-x;
-  if(y+h>H)h=H-y;
-  if(w<=0||h<=0)return;
-  uint32_t mask=((1u<<((x+w-1)/16+1))-1)^((1u<<(x/16))-1);
-  for(int row=y/16;row<=(y+h-1)/16;row++)damage[row]|=mask;
+static int dirty_pixel(int x, int y) {
+  return region_override || !damage_enabled ||
+         (damage[y >> 4] & (1u << (x >> 4)));
 }
-void dtr_damage_ring(int cx,int cy,int inner,int outer){
-  for(int ty=0;ty<(H+15)/16;ty++)for(int tx=0;tx<(W+15)/16;tx++){
-    int x0=tx*16-cx,x1=x0+15,y0=ty*16-cy,y1=y0+15;
-    int nx=x0>0?x0:x1<0?x1:0,ny=y0>0?y0:y1<0?y1:0;
-    int fx=x0*x0>x1*x1?x0:x1,fy=y0*y0>y1*y1?y0:y1;
-    if(nx*nx+ny*ny<=outer*outer&&fx*fx+fy*fy>=inner*inner)damage[ty]|=1u<<tx;
+static int dirty_rect(int x, int y, int w, int h) {
+  if (x < 0) {
+    w += x;
+    x = 0;
   }
-}
-void dtr_clear(int r,int g,int b){
-  uint16_t color=dtr_rgb(r,g,b);
-  for(int y=0;y<H;y++)for(int x=0;x<W;){
-    int end=(x/16+1)*16;if(end>W)end=W;
-    if(dirty_pixel(x,y))for(int i=x;i<end;i++)fb[y*W+i]=color;
-    x=end;
+  if (y < 0) {
+    h += y;
+    y = 0;
   }
+  if (x + w > W)
+    w = W - x;
+  if (y + h > H)
+    h = H - y;
+  if (w <= 0 || h <= 0)
+    return 0;
+  if (region_override || !damage_enabled)
+    return 1;
+  uint32_t mask = ((1u << ((x + w - 1) / 16 + 1)) - 1) ^ ((1u << (x / 16)) - 1);
+  for (int row = y / 16; row <= (y + h - 1) / 16; row++)
+    if (damage[row] & mask)
+      return 1;
+  return 0;
 }
-void dtr_hide_text(int hidden){hide_text=hidden;}
-static float distance_xy(int x,int y){
+void dtr_damage_rect(int x, int y, int w, int h) {
+  if (region_override)
+    return;
+  if (x < 0) {
+    w += x;
+    x = 0;
+  }
+  if (y < 0) {
+    h += y;
+    y = 0;
+  }
+  if (x + w > W)
+    w = W - x;
+  if (y + h > H)
+    h = H - y;
+  if (w <= 0 || h <= 0)
+    return;
+  uint32_t mask = ((1u << ((x + w - 1) / 16 + 1)) - 1) ^ ((1u << (x / 16)) - 1);
+  for (int row = y / 16; row <= (y + h - 1) / 16; row++)
+    damage[row] |= mask;
+}
+void dtr_damage_ring(int cx, int cy, int inner, int outer) {
+  if (region_override)
+    return;
+  for (int ty = 0; ty < (H + 15) / 16; ty++)
+    for (int tx = 0; tx < (W + 15) / 16; tx++) {
+      int x0 = tx * 16 - cx, x1 = x0 + 15, y0 = ty * 16 - cy, y1 = y0 + 15;
+      int nx = x0 > 0   ? x0
+               : x1 < 0 ? x1
+                        : 0,
+          ny = y0 > 0   ? y0
+               : y1 < 0 ? y1
+                        : 0;
+      int fx = x0 * x0 > x1 * x1 ? x0 : x1, fy = y0 * y0 > y1 * y1 ? y0 : y1;
+      if (nx * nx + ny * ny <= outer * outer &&
+          fx * fx + fy * fy >= inner * inner)
+        damage[ty] |= 1u << tx;
+    }
+}
+void dtr_clear(int r, int g, int b) {
+  if (!fb)
+    return;
+  uint16_t color = dtr_rgb(r, g, b);
+  int left = dtr_clip.left > OX ? dtr_clip.left : OX,
+      top = dtr_clip.top > OY ? dtr_clip.top : OY;
+  int right = dtr_clip.right < OX + TW ? dtr_clip.right : OX + TW;
+  int bottom = dtr_clip.bottom < OY + TH ? dtr_clip.bottom : OY + TH;
+  for (int y = top; y < bottom; y++)
+    for (int x = left; x < right; x++)
+      if (dirty_pixel(x, y))
+        fb[(y - OY) * STRIDE + x - OX] = color;
+}
+void dtr_hide_text(int hidden) { hide_text = hidden; }
+static float distance_xy(int x, int y) {
 #if !defined(__ZEPHYR__) || defined(CONFIG_ZMK_DONGLE_SCREEN_DISTANCE_LUT)
-  unsigned ax=x<0?-x:x,ay=y<0?-y:y;
-  if(ax<128&&ay<128){union {uint32_t bits;float value;} v={.bits=dtr_distance_bits[ay*128+ax]};return v.value;}
+  unsigned ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
+  if (ax < 128 && ay < 128) {
+    union {
+      uint32_t bits;
+      float value;
+    } v = {.bits = dtr_distance_bits[ay * 128 + ax]};
+    return v.value;
+  }
 #endif
-  return dtr_root((float)(x*x+y*y));
+  return dtr_root((float)(x * x + y * y));
 }
-float dtr_limit(float x){return x<0?0:x>1?1:x;}
+float dtr_limit(float x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
 uint16_t dtr_rgb(int r, int g, int b) {
   return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
 }
@@ -75,8 +178,10 @@ static uint16_t dither565(int x, int y, int r, int g, int b) {
                                     3, 11, 1, 9,  15, 7, 13, 5};
   int t = bayer[(y & 3) * 4 + (x & 3)];
   if ((unsigned)r <= 255 && (unsigned)g <= 255 && (unsigned)b <= 255) {
-    if (r==g && g==b) return dtr_grey[r*16+t];
-    return (dtr_q5[r*16+t]<<11)|(dtr_q6[g*16+t]<<5)|dtr_q5[b*16+t];
+    if (r == g && g == b)
+      return dtr_grey[r * 16 + t];
+    return (dtr_q5[r * 16 + t] << 11) | (dtr_q6[g * 16 + t] << 5) |
+           dtr_q5[b * 16 + t];
   }
   int rr = (r * 31 * 16 / 255 + t) / 16, gg = (g * 63 * 16 / 255 + t) / 16,
       bb = (b * 31 * 16 / 255 + t) / 16;
@@ -93,29 +198,38 @@ static uint16_t dither565(int x, int y, int r, int g, int b) {
   return (rr << 11) | (gg << 5) | bb;
 }
 void dtr_pixel(int x, int y, int r, int g, int b, int alpha) {
-  if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top || y >= dtr_clip.bottom ||
-      alpha <= 0)
+  if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
+      y >= dtr_clip.bottom || x < OX || x >= OX + TW || y < OY ||
+      y >= OY + TH || alpha <= 0 || !fb)
     return;
-  if(!dirty_pixel(x,y))return;
+  if (!dirty_pixel(x, y))
+    return;
   if (density_mask < 255) {
-    int rank=dtr_density_rank[(y&15)*16+(x&15)];
-    if(density_pattern) {
+    int rank = dtr_density_rank[(y & 15) * 16 + (x & 15)];
+    if (density_pattern) {
       int position;
-      if(density_pattern==1) {
-        int dx=x-density_cx,dy=y-density_cy;
-        position=(dx*dx+dy*dy-density_inner*density_inner)*255/
-                 (density_outer*density_outer-density_inner*density_inner);
-      } else position=(x-density_cx+density_outer)*255/(2*density_outer);
-      if(position<0)position=0;
-      if(position>255)position=255;
-      rank=(rank*90+position*166)/256;
+      if (density_pattern == 1) {
+        int dx = x - density_cx, dy = y - density_cy;
+        position =
+            (dx * dx + dy * dy - density_inner * density_inner) * 255 /
+            (density_outer * density_outer - density_inner * density_inner);
+      } else
+        position = (x - density_cx + density_outer) * 255 / (2 * density_outer);
+      if (position < 0)
+        position = 0;
+      if (position > 255)
+        position = 255;
+      rank = (rank * 90 + position * 166) / 256;
     }
-    int cover=density_mask*256-rank*255;
-    if(cover<=0)return;
-    if(cover<255)alpha=alpha*cover/255;
-    if(alpha<=0)return;
+    int cover = density_mask * 256 - rank * 255;
+    if (cover <= 0)
+      return;
+    if (cover < 255)
+      alpha = alpha * cover / 255;
+    if (alpha <= 0)
+      return;
   }
-  uint16_t *p = &fb[y * W + x];
+  uint16_t *p = &fb[(y - OY) * STRIDE + x - OX];
   if (alpha < 255) {
     uint16_t old = *p;
     r = (r * alpha + dtr_expand5[old >> 11] * (255 - alpha)) / 255;
@@ -124,33 +238,55 @@ void dtr_pixel(int x, int y, int r, int g, int b, int alpha) {
   }
   *p = dither565(x, y, r, g, b);
 }
-void dtr_pixel565(int x,int y,uint16_t color) {
-  if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||y>=dtr_clip.bottom||!dirty_pixel(x,y))return;
-  fb[y*W+x]=color;
+void dtr_pixel565(int x, int y, uint16_t color) {
+  if (!fb || x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
+      y >= dtr_clip.bottom || x < OX || x >= OX + TW || y < OY ||
+      y >= OY + TH || !dirty_pixel(x, y))
+    return;
+  fb[(y - OY) * STRIDE + x - OX] = color;
 }
 void dtr_rect(int x, int y, int w, int h, int r, int g, int b, int a) {
-  if(!dirty_rect(x,y,w,h)||a<=0)return;
+  if (!dirty_rect(x, y, w, h) || a <= 0)
+    return;
   for (int j = y; j < y + h; j++)
     for (int i = x; i < x + w; i++)
       dtr_pixel(i, j, r, g, b, a);
 }
 float dtr_root(float n) { return __builtin_sqrtf(n); }
 void dtr_line(int x, int y, int xx, int yy, int weight, int r, int g, int b,
-                 int a) {
+              int a) {
+  if (!fb)
+    return;
   int minx = (x < xx ? x : xx) - weight, maxx = (x > xx ? x : xx) + weight;
   int miny = (y < yy ? y : yy) - weight, maxy = (y > yy ? y : yy) + weight;
   float vx = xx - x, vy = yy - y, len = vx * vx + vy * vy;
-  float maxdist=weight*.5f+.65f;
-  if(minx<dtr_clip.left)minx=dtr_clip.left;
-  if(maxx>=dtr_clip.right)maxx=dtr_clip.right-1;
-  if(miny<dtr_clip.top)miny=dtr_clip.top;
-  if(maxy>=dtr_clip.bottom)maxy=dtr_clip.bottom-1;
+  float maxdist = weight * .5f + .65f;
+  if (minx < dtr_clip.left)
+    minx = dtr_clip.left;
+  if (maxx >= dtr_clip.right)
+    maxx = dtr_clip.right - 1;
+  if (miny < dtr_clip.top)
+    miny = dtr_clip.top;
+  if (maxy >= dtr_clip.bottom)
+    maxy = dtr_clip.bottom - 1;
+  if (minx < OX)
+    minx = OX;
+  if (maxx >= OX + TW)
+    maxx = OX + TW - 1;
+  if (miny < OY)
+    miny = OY;
+  if (maxy >= OY + TH)
+    maxy = OY + TH - 1;
   for (int j = miny; j <= maxy; j++)
     for (int i = minx; i <= maxx; i++) {
-      if(!dirty_pixel(i,j)){i=((i/16)+1)*16-1;continue;}
+      if (!dirty_pixel(i, j)) {
+        i = ((i / 16) + 1) * 16 - 1;
+        continue;
+      }
       float t = len ? dtr_limit(((i - x) * vx + (j - y) * vy) / len) : 0;
       float dx = i - x - t * vx, dy = j - y - t * vy;
-      if (dx*dx+dy*dy>maxdist*maxdist)continue;
+      if (dx * dx + dy * dy > maxdist * maxdist)
+        continue;
       float dist = dtr_root(dx * dx + dy * dy);
       int aa = (int)(dtr_limit(weight * .5f + .65f - dist) * a);
       dtr_pixel(i, j, r, g, b, aa);
@@ -163,62 +299,94 @@ int dtr_trig(int angle) {
   return dtr_sin[angle];
 }
 void dtr_radial(int cx, int cy, int r1, int r2, int angle, int weight, int r,
-                   int g, int b, int alpha) {
+                int g, int b, int alpha) {
   int sx = dtr_trig(angle + 90), sy = dtr_trig(angle);
   dtr_line(cx + r1 * sx / 32767, cy + r1 * sy / 32767, cx + r2 * sx / 32767,
-       cy + r2 * sy / 32767, weight, r, g, b, alpha);
+           cy + r2 * sy / 32767, weight, r, g, b, alpha);
 }
-void dtr_spindle(int cx,int cy,int inner,int outer,int angle,int half_width,
-                 int r,int g,int b,int alpha) {
-  if(outer<=inner||half_width<=0||alpha<=0)return;
-  float ux=dtr_trig(angle+90)/32767.f,uy=dtr_trig(angle)/32767.f;
-  int x1=cx+(int)(inner*ux),y1=cy+(int)(inner*uy);
-  int x2=cx+(int)(outer*ux),y2=cy+(int)(outer*uy);
-  int xa=(x1<x2?x1:x2)-half_width-1,xb=(x1>x2?x1:x2)+half_width+1;
-  int ya=(y1<y2?y1:y2)-half_width-1,yb=(y1>y2?y1:y2)+half_width+1;
-  if(xa<dtr_clip.left)xa=dtr_clip.left;
-  if(xb>=dtr_clip.right)xb=dtr_clip.right-1;
-  if(ya<dtr_clip.top)ya=dtr_clip.top;
-  if(yb>=dtr_clip.bottom)yb=dtr_clip.bottom-1;
-  if(!dirty_rect(xa,ya,xb-xa+1,yb-ya+1))return;
-  float length=outer-inner;
-  for(int y=ya;y<=yb;y++)for(int x=xa;x<=xb;x++){
-    if(!dirty_pixel(x,y)){x=((x/16)+1)*16-1;continue;}
-    float dx=x-cx,dy=y-cy,along=dx*ux+dy*uy;
-    if(along<inner-.65f||along>outer+.65f)continue;
-    float u=dtr_limit((along-inner)/length);
-    /* 0.2px endpoint leaves one AA pixel; 4u(1-u) makes a true spindle. */
-    float width=.20f+half_width*(4*u*(1-u));
-    float across=dx*(-uy)+dy*ux;if(across<0)across=-across;
-    int coverage=(int)(dtr_limit(width+.65f-across)*alpha);
-    if(coverage)dtr_pixel(x,y,r,g,b,coverage);
-  }
+void dtr_spindle(int cx, int cy, int inner, int outer, int angle,
+                 int half_width, int r, int g, int b, int alpha) {
+  if (!fb || outer <= inner || half_width <= 0 || alpha <= 0)
+    return;
+  float ux = dtr_trig(angle + 90) / 32767.f, uy = dtr_trig(angle) / 32767.f;
+  int x1 = cx + (int)(inner * ux), y1 = cy + (int)(inner * uy);
+  int x2 = cx + (int)(outer * ux), y2 = cy + (int)(outer * uy);
+  int xa = (x1 < x2 ? x1 : x2) - half_width - 1,
+      xb = (x1 > x2 ? x1 : x2) + half_width + 1;
+  int ya = (y1 < y2 ? y1 : y2) - half_width - 1,
+      yb = (y1 > y2 ? y1 : y2) + half_width + 1;
+  if (xa < dtr_clip.left)
+    xa = dtr_clip.left;
+  if (xb >= dtr_clip.right)
+    xb = dtr_clip.right - 1;
+  if (ya < dtr_clip.top)
+    ya = dtr_clip.top;
+  if (yb >= dtr_clip.bottom)
+    yb = dtr_clip.bottom - 1;
+  if (xa < OX)
+    xa = OX;
+  if (xb >= OX + TW)
+    xb = OX + TW - 1;
+  if (ya < OY)
+    ya = OY;
+  if (yb >= OY + TH)
+    yb = OY + TH - 1;
+  if (!dirty_rect(xa, ya, xb - xa + 1, yb - ya + 1))
+    return;
+  float length = outer - inner;
+  for (int y = ya; y <= yb; y++)
+    for (int x = xa; x <= xb; x++) {
+      if (!dirty_pixel(x, y)) {
+        x = ((x / 16) + 1) * 16 - 1;
+        continue;
+      }
+      float dx = x - cx, dy = y - cy, along = dx * ux + dy * uy;
+      if (along < inner - .65f || along > outer + .65f)
+        continue;
+      float u = dtr_limit((along - inner) / length);
+      /* 0.2px endpoint leaves one AA pixel; 4u(1-u) makes a true spindle. */
+      float width = .20f + half_width * (4 * u * (1 - u));
+      float across = dx * (-uy) + dy * ux;
+      if (across < 0)
+        across = -across;
+      int coverage = (int)(dtr_limit(width + .65f - across) * alpha);
+      if (coverage)
+        dtr_pixel(x, y, r, g, b, coverage);
+    }
 }
-/* Analytic annular sector: smooth circular edges without dtr_radial-spoke seams. */
-void dtr_arc(int cx, int cy, int inner, int outer, int first, int last,
-                int r, int g, int b, int alpha) {
-  dtr_arc_f(cx,cy,inner,outer,first,last,r,g,b,alpha);
+/* Analytic annular sector: smooth circular edges without dtr_radial-spoke
+ * seams. */
+void dtr_arc(int cx, int cy, int inner, int outer, int first, int last, int r,
+             int g, int b, int alpha) {
+  dtr_arc_f(cx, cy, inner, outer, first, last, r, g, b, alpha);
 }
-void dtr_arc_density(int cx,int cy,float inner,float outer,int first,int last,
-                    int r,int g,int b,int alpha,int density) {
-  dtr_arc_reveal(cx,cy,inner,outer,first,last,r,g,b,alpha,density,0);
+void dtr_arc_density(int cx, int cy, float inner, float outer, int first,
+                     int last, int r, int g, int b, int alpha, int density) {
+  dtr_arc_reveal(cx, cy, inner, outer, first, last, r, g, b, alpha, density, 0);
 }
-void dtr_arc_reveal(int cx,int cy,float inner,float outer,int first,int last,
-                   int r,int g,int b,int alpha,int density,int pattern) {
-  if(outer<=inner || inner<0)return;
-  int saved=density_mask;
-  int prior_pattern=density_pattern;
-  density_pattern=pattern>=1&&pattern<=2?pattern:0;
-  density_cx=cx;density_cy=cy;density_inner=(int)inner;density_outer=(int)outer;
-  if(density_outer<=density_inner)density_pattern=0;
-  density_mask=density<0?0:density>255?255:density;
-  dtr_arc_f(cx,cy,inner,outer,first,last,r,g,b,alpha);
-  density_mask=saved;
-  density_pattern=prior_pattern;
+void dtr_arc_reveal(int cx, int cy, float inner, float outer, int first,
+                    int last, int r, int g, int b, int alpha, int density,
+                    int pattern) {
+  if (outer <= inner || inner < 0)
+    return;
+  int saved = density_mask;
+  int prior_pattern = density_pattern;
+  density_pattern = pattern >= 1 && pattern <= 2 ? pattern : 0;
+  density_cx = cx;
+  density_cy = cy;
+  density_inner = (int)inner;
+  density_outer = (int)outer;
+  if (density_outer <= density_inner)
+    density_pattern = 0;
+  density_mask = density < 0 ? 0 : density > 255 ? 255 : density;
+  dtr_arc_f(cx, cy, inner, outer, first, last, r, g, b, alpha);
+  density_mask = saved;
+  density_pattern = prior_pattern;
 }
 void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
-                int r, int g, int b, int alpha) {
-  if (alpha <= 0) return;
+               int r, int g, int b, int alpha) {
+  if (!fb || alpha <= 0)
+    return;
   PROFILE_BEGIN;
   float sx = dtr_trig(first + 90) / 32767.f, sy = dtr_trig(first) / 32767.f,
         ex = dtr_trig(last + 90) / 32767.f, ey = dtr_trig(last) / 32767.f;
@@ -231,20 +399,28 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
     for (int i = 0; i < 6; i++) {
       int angle = i == 0 ? first : i == 1 ? last : (i - 2) * 90;
       int delta = (angle - first) % 360;
-      if (delta < 0) delta += 360;
-      if (i >= 2 && delta > last - first) continue;
+      if (delta < 0)
+        delta += 360;
+      if (i >= 2 && delta > last - first)
+        continue;
       for (int j = 0; j < 2; j++) {
         float radius = j ? outer : inner;
         float xx = radius * (dtr_trig(angle + 90) / 32767.f);
         float yy = radius * (dtr_trig(angle) / 32767.f);
-        if (xx < minx) minx = xx;
-        if (xx > maxx) maxx = xx;
-        if (yy < miny) miny = yy;
-        if (yy > maxy) maxy = yy;
+        if (xx < minx)
+          minx = xx;
+        if (xx > maxx)
+          maxx = xx;
+        if (yy < miny)
+          miny = yy;
+        if (yy > maxy)
+          maxy = yy;
       }
     }
-    xa = cx + (int)minx - 2; xb = cx + (int)maxx + 2;
-    ya = cy + (int)miny - 2; yb = cy + (int)maxy + 2;
+    xa = cx + (int)minx - 2;
+    xb = cx + (int)maxx + 2;
+    ya = cy + (int)miny - 2;
+    yb = cy + (int)maxy + 2;
   }
   if (xa < 0)
     xa = 0;
@@ -254,20 +430,36 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
     ya = 0;
   if (yb >= H)
     yb = H - 1;
-  if(xa<dtr_clip.left)xa=dtr_clip.left;
-  if(xb>=dtr_clip.right)xb=dtr_clip.right-1;
-  if(ya<dtr_clip.top)ya=dtr_clip.top;
-  if(yb>=dtr_clip.bottom)yb=dtr_clip.bottom-1;
-  if(!dirty_rect(xa,ya,xb-xa+1,yb-ya+1)){PROFILE_END(1);return;}
+  if (xa < dtr_clip.left)
+    xa = dtr_clip.left;
+  if (xb >= dtr_clip.right)
+    xb = dtr_clip.right - 1;
+  if (ya < dtr_clip.top)
+    ya = dtr_clip.top;
+  if (yb >= dtr_clip.bottom)
+    yb = dtr_clip.bottom - 1;
+  if (xa < OX)
+    xa = OX;
+  if (xb >= OX + TW)
+    xb = OX + TW - 1;
+  if (ya < OY)
+    ya = OY;
+  if (yb >= OY + TH)
+    yb = OY + TH - 1;
+  if (!dirty_rect(xa, ya, xb - xa + 1, yb - ya + 1)) {
+    PROFILE_END(1);
+    return;
+  }
   /* Most annulus interior pixels cover the uniform dial background. Blend that
    * color once per arc, not three multiplies/divides for every covered pixel.
    * Edges, overlaps and density effects still take the exact general path. */
-  uint16_t flat[16],base=dtr_rgb(8,10,12);
-  if(density_mask==255&&alpha<=255){
-    int rr=(r*alpha+dtr_expand5[base>>11]*(255-alpha))/255;
-    int gg=(g*alpha+dtr_expand6[(base>>5)&63]*(255-alpha))/255;
-    int bb=(b*alpha+dtr_expand5[base&31]*(255-alpha))/255;
-    for(int i=0;i<16;i++)flat[i]=dither565(i&3,i>>2,rr,gg,bb);
+  uint16_t flat[16], base = dtr_rgb(8, 10, 12);
+  if (density_mask == 255 && alpha <= 255) {
+    int rr = (r * alpha + dtr_expand5[base >> 11] * (255 - alpha)) / 255;
+    int gg = (g * alpha + dtr_expand6[(base >> 5) & 63] * (255 - alpha)) / 255;
+    int bb = (b * alpha + dtr_expand5[base & 31] * (255 - alpha)) / 255;
+    for (int i = 0; i < 16; i++)
+      flat[i] = dither565(i & 3, i >> 2, rr, gg, bb);
   }
   for (int y = ya; y <= yb; y++) {
     /* Skip the hollow centre a whole scanline at a time. No coverage values
@@ -276,7 +468,10 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
     float hole2 = (inner - 1) * (inner - 1) - dy_i * dy_i;
     int hole = hole2 > 0 ? (int)dtr_root(hole2) : 0;
     for (int x = xa; x <= xb; x++) {
-      if(!dirty_pixel(x,y)){x=((x/16)+1)*16-1;continue;}
+      if (!dirty_pixel(x, y)) {
+        x = ((x / 16) + 1) * 16 - 1;
+        continue;
+      }
       if (hole > 0 && x > cx - hole && x < cx + hole) {
         x = cx + hole - 1;
         continue;
@@ -284,23 +479,28 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
       float dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
       if (d2 < (inner - 1) * (inner - 1) || d2 > (outer + 1) * (outer + 1))
         continue;
-      float d = distance_xy(x-cx,y-cy), aa = dtr_limit(d - inner + .5f) * dtr_limit(outer + .5f - d);
+      float d = distance_xy(x - cx, y - cy),
+            aa = dtr_limit(d - inner + .5f) * dtr_limit(outer + .5f - d);
       float cross1 = sx * dy - sy * dx, cross2 = dx * ey - dy * ex;
       if (last - first <= 180)
         aa *= dtr_limit(cross1 + .5f) * dtr_limit(cross2 + .5f);
       else
         aa *= 1 - dtr_limit(-cross1 + .5f) * dtr_limit(-cross2 + .5f);
-      int opacity=(int)(aa*alpha);
-      if(density_mask==255&&alpha<=255&&opacity==alpha&&fb[y*W+x]==base)
-        fb[y*W+x]=flat[(y&3)*4+(x&3)];
-      else dtr_pixel(x,y,r,g,b,opacity);
+      int opacity = (int)(aa * alpha);
+      uint16_t *target = &fb[(y - OY) * STRIDE + x - OX];
+      if (density_mask == 255 && alpha <= 255 && opacity == alpha &&
+          *target == base)
+        *target = flat[(y & 3) * 4 + (x & 3)];
+      else
+        dtr_pixel(x, y, r, g, b, opacity);
     }
   }
   PROFILE_END(1);
 }
 void dtr_text(const char *s, int x, int y, int size, int r, int g, int b,
-                 int alpha, int centered) {
-  if(alpha<=0||hide_text)return;
+              int alpha, int centered) {
+  if (!fb || alpha <= 0 || hide_text)
+    return;
   PROFILE_BEGIN;
   int fi = 0;
   for (int i = 0; i < DTR_FONT_COUNT; i++)
@@ -323,14 +523,20 @@ void dtr_text(const char *s, int x, int y, int size, int r, int g, int b,
     const struct dtr_glyph *gl = &f->glyph[c - 32];
     int gw = (int)(gl->w * scale + .5f), gh = (int)(gl->h * scale + .5f),
         ox = (int)(gl->ox * scale), oy = (int)(gl->oy * scale);
-    if(!dirty_rect(pen+ox,base-gh-oy,gw,gh)){pen+=(int)(gl->advance*scale+.5f);continue;}
-    if (size==f->size) {
-      for(int yy=0;yy<gl->h;yy++) for(int xx=0;xx<gl->w;xx++) {
-        int idx=yy*gl->w+xx, v=f->bits[gl->offset+idx/2];
-        v=(idx&1)?v&15:v>>4;
-        if(v)dtr_pixel(pen+gl->ox+xx,base-gl->h-gl->oy+yy,r,g,b,v*alpha/15);
-      }
-      pen+=gl->advance;
+    if (!dirty_rect(pen + ox, base - gh - oy, gw, gh)) {
+      pen += (int)(gl->advance * scale + .5f);
+      continue;
+    }
+    if (size == f->size) {
+      for (int yy = 0; yy < gl->h; yy++)
+        for (int xx = 0; xx < gl->w; xx++) {
+          int idx = yy * gl->w + xx, v = f->bits[gl->offset + idx / 2];
+          v = (idx & 1) ? v & 15 : v >> 4;
+          if (v)
+            dtr_pixel(pen + gl->ox + xx, base - gl->h - gl->oy + yy, r, g, b,
+                      v * alpha / 15);
+        }
+      pen += gl->advance;
       continue;
     }
     for (int yy = 0; yy < gh; yy++)
@@ -346,7 +552,10 @@ void dtr_text(const char *s, int x, int y, int size, int r, int g, int b,
   PROFILE_END(2);
 }
 
-void dtr_metal_ring(int cx,int cy,int R,int thickness,float (*metal)(float)){
+void dtr_metal_ring(int cx, int cy, int R, int thickness,
+                    float (*metal)(float)) {
+  if (!fb)
+    return;
   PROFILE_BEGIN;
   /* The moving assembly retains a dark disc and metal rim, with no overshoot.
    */
@@ -357,64 +566,91 @@ void dtr_metal_ring(int cx,int cy,int R,int thickness,float (*metal)(float)){
         continue;
       if (d2 < (R - thickness - 1) * (R - thickness - 1)) {
         if (x >= 0 && x < W && y >= 0 && y < H)
-          fb[y * W + x] = dtr_rgb(8, 10, 12);
+          dtr_pixel565(x, y, dtr_rgb(8, 10, 12));
         continue;
       }
-      uint8_t c,a;
-      if (dtr_metal_sample(dx,dy,R,metal,&c,&a))
-        dtr_pixel(x,y,c,c,c,a);
+      uint8_t c, a;
+      if (dtr_metal_sample(dx, dy, R, metal, &c, &a))
+        dtr_pixel(x, y, c, c, c, a);
     }
   PROFILE_END(0);
 }
 
-void dtr_metal_ring_cached(int cx,int cy,int R,int thickness,
-                           const struct dtr_metal_texel *atlas,size_t count) {
+void dtr_metal_ring_cached(int cx, int cy, int R, int thickness,
+                           const struct dtr_metal_texel *atlas, size_t count) {
+  if (!fb)
+    return;
   PROFILE_BEGIN;
-  int inner=R-thickness-1;
+  int inner = R - thickness - 1;
   /* Disc is flat; only its scanline endpoints need square roots. */
-  for(int dy=-inner+1;dy<inner;dy++) {
-    int y=cy+dy;
-    if(y<0||y>=H) continue;
-    int edge=(int)dtr_root(inner*inner-dy*dy-1);
-    int left=cx-edge,right=cx+edge;
-    if(left<0)left=0;
-    if(right>=W)right=W-1;
-    for(int x=left;x<=right;x++){
-      if(!dirty_pixel(x,y)){x=((x/16)+1)*16-1;continue;}
-      fb[y*W+x]=dtr_rgb(8,10,12);
+  for (int dy = -inner + 1; dy < inner; dy++) {
+    int y = cy + dy;
+    if (y < 0 || y >= H)
+      continue;
+    int edge = (int)dtr_root(inner * inner - dy * dy - 1);
+    int left = cx - edge, right = cx + edge;
+    if (left < 0)
+      left = 0;
+    if (right >= W)
+      right = W - 1;
+    for (int x = left; x <= right; x++) {
+      if (!dirty_pixel(x, y)) {
+        x = ((x / 16) + 1) * 16 - 1;
+        continue;
+      }
+      dtr_pixel565(x, y, dtr_rgb(8, 10, 12));
     }
   }
   /* Build-time coverage/grey; quantization remains at destination coordinates
    * so moving the ring preserves the fixed Bayer matrix without shimmer. */
-  for(size_t i=0;i<count;i++) {
-    const struct dtr_metal_texel *t=&atlas[i];
-    int x=cx+t->x,y=cy+t->y;
-    if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||y>=dtr_clip.bottom||!dirty_pixel(x,y))continue;
-    if(t->alpha==255&&density_mask==255){
-      static const uint8_t bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
-      fb[y*W+x]=dtr_grey[t->grey*16+bayer[(y&3)*4+(x&3)]];
-    }else dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
+  for (size_t i = 0; i < count; i++) {
+    const struct dtr_metal_texel *t = &atlas[i];
+    int x = cx + t->x, y = cy + t->y;
+    if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
+        y >= dtr_clip.bottom || !dirty_pixel(x, y))
+      continue;
+    if (t->alpha == 255 && density_mask == 255) {
+      static const uint8_t bayer[16] = {0, 8,  2, 10, 12, 4, 14, 6,
+                                        3, 11, 1, 9,  15, 7, 13, 5};
+      dtr_pixel565(x, y, dtr_grey[t->grey * 16 + bayer[(y & 3) * 4 + (x & 3)]]);
+    } else
+      dtr_pixel(x, y, t->grey, t->grey, t->grey, t->alpha);
   }
   PROFILE_END(0);
 }
 
-void dtr_metal_ring_scaled(int cx,int cy,int source_radius,int target_radius,
-                           int thickness,const struct dtr_metal_texel *atlas,size_t count) {
+void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
+                           int thickness, const struct dtr_metal_texel *atlas,
+                           size_t count) {
+  if (!fb)
+    return;
   PROFILE_BEGIN;
-  int inner=target_radius-thickness-1;
-  for(int dy=-inner+1;dy<inner;dy++) {
-    int y=cy+dy;if(y<0||y>=H)continue;
-    int edge=(int)dtr_root(inner*inner-dy*dy-1);
-    int left=cx-edge,right=cx+edge;if(left<0)left=0;if(right>=W)right=W-1;
-    for(int x=left;x<=right;x++)if(dirty_pixel(x,y))fb[y*W+x]=dtr_rgb(8,10,12);
+  int inner = target_radius - thickness - 1;
+  for (int dy = -inner + 1; dy < inner; dy++) {
+    int y = cy + dy;
+    if (y < 0 || y >= H)
+      continue;
+    int edge = (int)dtr_root(inner * inner - dy * dy - 1);
+    int left = cx - edge, right = cx + edge;
+    if (left < 0)
+      left = 0;
+    if (right >= W)
+      right = W - 1;
+    for (int x = left; x <= right; x++)
+      if (dirty_pixel(x, y))
+        dtr_pixel565(x, y, dtr_rgb(8, 10, 12));
   }
-  for(size_t i=0;i<count;i++) {
-    const struct dtr_metal_texel *t=&atlas[i];
-    int px=t->x*target_radius,py=t->y*target_radius;
-    int x=cx+(px>=0?(px+source_radius/2)/source_radius:(px-source_radius/2)/source_radius);
-    int y=cy+(py>=0?(py+source_radius/2)/source_radius:(py-source_radius/2)/source_radius);
-    if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||y>=dtr_clip.bottom||!dirty_pixel(x,y))continue;
-    dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
+  for (size_t i = 0; i < count; i++) {
+    const struct dtr_metal_texel *t = &atlas[i];
+    int px = t->x * target_radius, py = t->y * target_radius;
+    int x = cx + (px >= 0 ? (px + source_radius / 2) / source_radius
+                          : (px - source_radius / 2) / source_radius);
+    int y = cy + (py >= 0 ? (py + source_radius / 2) / source_radius
+                          : (py - source_radius / 2) / source_radius);
+    if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
+        y >= dtr_clip.bottom || !dirty_pixel(x, y))
+      continue;
+    dtr_pixel(x, y, t->grey, t->grey, t->grey, t->alpha);
   }
   PROFILE_END(0);
 }

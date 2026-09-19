@@ -1,194 +1,148 @@
 # API manual
 
-## Scope
+## Scope and version
 
-`zmk-dongle-screen-engine` is a compile-time ZMK screen host. It links exactly
-one Theme through the v1 `dte_selected_theme` or ABI 1.1
-`dte_selected_theme_v1_1`; it does not yet implement a runtime registry,
-persistent theme selection, or a safe fallback theme.
+Engine 1.2.0 exposes Theme ABI `0x0102`. It links one compile-time Theme and
+supports 280×240, 240×280 and 240×240 RGB565 scenes. ABI 1.2 intentionally
+replaces the v1/1.1 full-frame callback: firmware owns only a bounded transfer
+strip, while native and WASM builds retain a preview-only full framebuffer.
 
-The current host accepts 280x240, 240x280 and 240x240 displays. Its validated
-raster and transport path is RGB565. Theme-local localization, fonts and copy
-remain the theme's responsibility. The WASM preview shell localization is not
-part of the firmware ABI.
+Every cross-module structure starts with `abi_version` and `struct_size`, uses
+fixed-width integers, and defines a `*_REQUIRED_SIZE`. ABI functions return the
+fixed-width `int32_t` alias `dte_result_t`; C enums are constants only. The Engine reads or
+writes only that required prefix and ignores a compatible caller tail. A wrong
+ABI is rejected; it is never silently downgraded.
 
-The published v1 API is frozen and remains source-compatible. ABI 1.1 is additive:
-it uses separately named structures and entry points rather than extending v1
-structures in place. This is a static-link firmware ABI; it does not promise
-that separately compiled binary plugins can move between toolchains.
-
-These APIs ship in Engine 1.1.2. Engine release 1.1 and Theme ABI 1.1 are
-separate version domains; the ABI addition does not make the Engine a 2.0
-release. Compile-time Engine version macros are `DTE_ENGINE_VERSION_MAJOR`,
-`DTE_ENGINE_VERSION_MINOR`, `DTE_ENGINE_VERSION_PATCH` and
-`DTE_ENGINE_VERSION_STRING`.
-
-The preview-only hardware model reads `dtr_dirty_tiles()` after each WASM
-render, estimates full-frame, dirty-band or packed-tile transfer bytes, and
-throttles presentation by target FPS plus estimated CPU/SPI cost. Profile
-changes never reinitialize WASM or mutate the theme snapshot. The nRF52840
-preset is deliberately conservative and must be calibrated against physical
-display measurements before treating its FPS as a hardware claim.
-
-## Theme descriptors
-
-### Frozen v1
+## Theme descriptor
 
 Include `zmk/dongle_theme/theme.h` and define one descriptor:
 
-    const struct dte_theme dte_selected_theme = {
-        DTE_ABI_VERSION, "theme-id", mount, gesture, render};
+```c
+const struct dte_theme dte_selected_theme = DTE_THEME_INIT(
+    "theme-id", DTE_THEME_CAP_GESTURE,
+    mount, gesture, frame, draw);
+```
 
-`mount(width, height, now)` initializes theme-owned state. `gesture(kind, now)`
-receives normalized gestures. `render(snapshot, now, pixels)` writes the
-borrowed RGB565 framebuffer and returns nonzero while another animation frame
-is required. The host owns the buffer; a theme must neither free nor retain a
-replacement pointer.
+- `mount(width, height, now)` initializes theme-owned state.
+- `gesture(kind, now)` receives normalized gestures when the capability is set.
+- `frame(snapshot, now, result)` advances state and publishes dirty rectangles.
+- `draw(snapshot, now, canvas)` shades exactly the requested scene region.
 
-`DTE_ABI_VERSION` is currently 1. A mismatched descriptor is not mounted.
+`dte_validate_theme()` checks the required prefix and callbacks without
+mounting. `dte_init_ex()` returns a `dte_status`; `dte_last_status()` reports the
+latest status and `dte_active_abi_version()` is zero until mount succeeds.
 
-### Additive ABI 1.1
+Existing allocation-free raster themes may use
+`zmk/dongle_theme/adapter.h` and `DTE_THEME_RASTER_ADAPTER`. The adapter first
+executes the existing renderer without a pixel target to collect damage, then
+replays it into each requested region. It is a migration aid, not a second ABI.
 
-An ABI 1.1 Theme defines `dte_selected_theme_v1_1` with the initializer macro:
+## Snapshot
 
-    const struct dte_theme_v1_1 dte_selected_theme_v1_1 = DTE_THEME_V1_1_INIT(
-        "theme-id", DTE_THEME_CAP_GESTURE, mount, gesture, render);
+`struct dte_snapshot` carries WPM, layer index/name, endpoint, BLE profile,
+modifier mask, startup phase, brightness, measured refresh rate, battery values
+and split connection state. Battery `-1` means unknown; connection `-1`, `0`
+and `1` mean unknown, disconnected and connected. `valid_mask` states which
+fields a caller intentionally supplies.
 
-`struct dte_theme_v1_1`, `struct dte_snapshot_v1_1` and
-`struct dte_render_result_v1_1` begin with `abi_version` and `struct_size`.
-The Engine rejects an unknown major version or a structure shorter than its
-required prefix, and ignores a longer compatible tail. All state scalars use
-fixed-width integer types. A present but invalid ABI 1.1 descriptor is reported as
-an error and is not silently replaced by v1; when both valid descriptors are
-linked, ABI 1.1 takes precedence.
+Initialize it with `DTE_SNAPSHOT_INIT` and submit it through
+`dte_set_snapshot()`. Convenience setters remain available to the ZMK host and
+preview shell. Input values are bounded before reaching a Theme, and the inline
+layer name is always terminated.
 
-`dte_validate_theme_v1_1()` validates a descriptor without mounting it.
-`dte_init_ex()` returns a `dte_status`; `dte_last_status()` reports the most
-recent status and `dte_active_abi_version()` reports 0, legacy v1 value `1`, or
-ABI 1.1 value `0x0101`. The legacy
-`dte_init()` wrapper calls the same core and discards the status.
+## Frame contract
 
-| Linked descriptors | Selected API | Invalid selection behavior |
-| --- | --- | --- |
-| v1 only | v1 | initialization returns the v1 validation error |
-| ABI 1.1 only | ABI 1.1 | initialization returns the ABI 1.1 validation error |
-| valid v1 and valid ABI 1.1 | ABI 1.1 | ABI 1.1 deterministically takes precedence |
-| valid v1 and invalid, present ABI 1.1 | none | ABI 1.1 error is returned; no silent fallback |
+Initialize `struct dte_frame_result` with `DTE_FRAME_RESULT_INIT`, then call:
 
-## State snapshot
+```c
+dte_result_t status = dte_frame(now_ms, &result);
+```
 
-`struct dte_snapshot` supplies WPM, layer index and name, endpoint, BLE profile,
-modifier mask, display brightness, measured refresh rate multiplied by ten,
-and dongle/split battery and connection values. Battery `-1` means unknown.
-Connection `-1`, `0`, and `1` mean unknown, disconnected, and connected.
+Dirty rectangles use scene coordinates and must be non-empty, in bounds, and
+no more numerous than `DTE_MAX_DIRTY_RECTS`. The flags are:
 
-`battery_count` is 2 or 3. `startup_phase` is a host sequence value: 0 normal,
-1 splash, 2 reveal. A theme may ignore every field it does not need.
+- `DTE_RENDER_FRAME_CHANGED`: one or more output regions changed;
+- `DTE_RENDER_CONTINUOUS`: schedule by the configured frame grid;
+- `DTE_RENDER_DEADLINE_VALID`: use absolute monotonic
+  `next_frame_at_ms`.
 
-Host and preview adapters update snapshots through `dte_set_state()`,
-`dte_set_layer_name()`, `dte_set_battery_count()`,
-`dte_set_display_stats()` and `dte_set_startup_phase()`. `dte_name_buffer()`
-returns a writable 24-byte bridge for environments such as WASM; call
-`dte_set_layer_name()` after writing it.
+The host consumes explicit deadlines. A display transfer failure forces a full
+scene repaint on the next attempt.
 
-ABI 1.1 uses `struct dte_snapshot_v1_1`, `DTE_SNAPSHOT_V1_1_INIT` and a `valid_mask`.
-`dte_set_snapshot_v1_1()` validates its prefix, clamps values to the same ranges
-as v1, copies the inline layer name, and ignores unknown tail bytes. Existing
-v1 setters update the ABI 1.1 snapshot too, so an unchanged ZMK host can feed an ABI 1.1
-Theme during migration.
+For retained rendering, each changing frame must include both previous and
+current conservative bounds. A hidden or moved object therefore restores its
+old location. If the rectangle list cannot represent the damage, return one
+full-scene rectangle rather than truncating it.
 
-`dte_gesture_x()` and `dte_gesture_y()` expose the landscape-space touch
-origin only while a Theme handles that gesture. They return `-1` immediately
-after the callback. Direct button or API gestures return `-1` during and after
-the callback, allowing themes to retain their non-touch fallback behavior.
-`dte_backlight_adjust()` applies a bounded relative change to the runtime
-backlight and returns the new percentage; native/WASM updates the snapshot,
-while the ZMK host also applies it to the configured backlight LED.
-`dte_backlight_get()` reads the current runtime value.
+## Region draw contract
 
-## Lifecycle and rendering
+After a successful `dte_frame(now, ...)`, call `dte_draw()` with the same
+timestamp and an initialized `struct dte_canvas`:
 
-`dte_init(width, height)` resets engine and touch state, initializes unknown
-values, and mounts a compatible selected theme. `dte_render(now)` dispatches a
-pending long press, invokes the active v1 or ABI 1.1 renderer and retains its legacy
-boolean scheduling result. `dte_pixels()`, `dte_width()`, `dte_height()` and
-`dte_hash()` expose the current frame for hosts and deterministic tests.
+```c
+struct dte_canvas canvas = DTE_CANVAS_INIT;
+canvas.scene_width = 280;
+canvas.scene_height = 240;
+canvas.origin_x = rect.x;
+canvas.origin_y = rect.y;
+canvas.width = rect.width;
+canvas.height = strip_height;
+canvas.stride_pixels = rect.width;
+canvas.buffer_size = rect.width * strip_height * 2u;
+canvas.pixels = strip_pixels;
+```
 
-`dte_render_v1_1()` returns status and fills a caller-initialized
-`DTE_RENDER_RESULT_V1_1_INIT`. Its flags separately describe framebuffer change,
-continuous animation and an absolute monotonic `next_frame_at_ms` deadline.
-Unknown result flags are ignored. The present ZMK adapter still consumes the
-legacy boolean wrapper and therefore limits active ABI 1.1 themes at the configured
-FPS; exact deadline scheduling is not yet claimed by the firmware host.
+The RGB565 buffer is borrowed only for the call. Coordinates remain in scene
+space; `origin_x` and `origin_y` map them into the region. The Engine rejects a
+wrong pixel format, invalid stride, out-of-bounds region, insufficient buffer,
+or a timestamp not prepared by `dte_frame()`.
 
-The ZMK `dongle_screen_host` shield owns `zmk_display_status_screen()` and must
-not be combined with another custom status-screen owner. State and rendering
-run on ZMK's display work queue. With direct RGB565 enabled, changed tiles are
-hashed and submitted as row bands or packed rectangles through the display
-driver.
+The ZMK host subdivides dirty rectangles into at most
+`ZMK_DONGLE_SCREEN_STRIP_PIXELS` and synchronously passes each strip to the
+display driver. The default is 4,480 RGB565 pixels, or 8,960 bytes. Neither the
+Engine nor LVGL owns a full animation framebuffer in firmware.
 
-## Gestures
+`dte_render()` and preview-only `dte_pixels()`/`dte_hash()` assemble the same
+regions into a full buffer for native/WASM tools. They are not firmware storage
+contracts.
+
+## Gestures and optional controls
 
 Gesture values are `DTE_TAP`, `DTE_LEFT`, `DTE_RIGHT`, `DTE_UP`, `DTE_DOWN` and
-`DTE_LONG_PRESS`. `dte_gesture()` injects a normalized gesture directly.
+`DTE_LONG_PRESS`. `dte_touch()` performs software recognition;
+`dte_touch_hint()` accepts one controller gesture per contact and suppresses
+its software duplicate. `dte_touch_at()` separates the physical event time
+from animation dispatch time. `dte_gesture_x()` and `dte_gesture_y()` expose a
+touch origin only during the callback.
 
-`dte_touch(x, y, down, now)` feeds software recognition. A 28-pixel dominant
-axis movement becomes a swipe; a stationary contact held for 600 ms becomes a
-long press; a shorter stationary contact becomes a tap. `dte_touch_at()` keeps
-the physical event timestamp separate from animation dispatch time.
-`dte_touch_active()` remains nonzero from contact-down through release, allowing
-a theme to provide a reversible hold effect without treating long press as a
-latched gesture. It exposes no coordinates and does not bypass gesture dispatch.
-`dte_touch_hint()` accepts one hardware-controller gesture per contact and
-suppresses its software duplicate. `dte_touch_cancel()` clears incomplete
-contact state.
+The animation selection, duration, forced-redraw and backlight wrappers remain
+optional weak bridges for previews and settings adapters. They do not create a
+runtime Theme registry.
 
-The present ZMK adapter maps a portrait 240x280 CST816S input to a landscape
-280x240 display. Other orientations require an adapted host transform.
+## Raster and shared utilities
 
-## Raster API
+`zmk/dongle_theme/raster.h` provides RGB565 primitives, fixed Bayer dithering,
+text and metallic ring helpers. Retained themes may declare 16×16 tile damage
+with `dtr_damage_begin()`, `dtr_damage_rect()`, `dtr_damage_ring()` and
+`dtr_damage_all()`.
 
-Include `zmk/dongle_theme/raster.h`. Call `dtr_begin()` before drawing.
-Available primitives include clear, pixel, rectangle, anti-aliased line,
-radial mark, spindle, arc, density/reveal arc, simple bitmap text, and metallic
-ring drawing. The bundled font is a small renderer resource, not a localization
-system.
+`zmk/dongle_theme/ui.h` provides allocation-free sprite and small UI helpers.
+Theme palettes, layouts, animation policy, fonts and asset payloads remain in
+the Theme module.
 
-`dtr_pixel565()` writes an exact pre-quantized opaque RGB565 asset pixel without
-running the RGB888 Bayer quantizer again. Use it for pixel-perfect sprite atlases;
-use `dtr_pixel()` for coverage-blended vector and font edges.
+## Preview reliability gate
 
-RGB888 inputs are quantized to RGB565 with a fixed 4x4 Bayer matrix. The matrix
-is anchored to destination coordinates so stationary frames do not shimmer.
-Arc and line edges use coverage alpha rather than whole-screen noise.
+`scripts/build_preview.py` compiles native and WASM binaries, then runs an ABI
+probe before producing the final HTML. The probe covers:
 
-Retained themes may call `dtr_damage_begin()`, `dtr_damage_rect()`,
-`dtr_damage_ring()` or `dtr_damage_all()` before repainting. Dirty tiles are
-16x16 pixels and may be read with `dtr_dirty_tiles()`.
+- active ABI identity and unsupported-version rejection;
+- required-prefix structures with protected tail canaries;
+- draw-before-frame and timestamp mismatch rejection;
+- dirty rectangle count and scene bounds;
+- valid region draw and insufficient-buffer rejection;
+- exact native/WASM result equality.
 
-## Shared theme utilities
-
-Include `zmk/dongle_theme/ui.h` for allocation-free utilities that are useful
-across themes. `struct dte_sprite` is a borrowed RGB565 view;
-`dte_sprite_blit()` treats `0x0001` as a transparent key, while
-`dte_sprite_blit_opaque()` copies every pixel exactly. The same header provides
-solid or alpha rectangles, a small rounded rectangle, bounded number/percent
-formatters, and a deterministic three-input hash. Theme-specific palettes,
-widgets, fonts, layouts, and asset payloads do not belong in the Engine.
-
-## Transport API
-
-`zmk/dongle_theme/transport.h` provides allocation-free rectangle and row-band
-iterators. `dte_next_dirty_rect()` consumes a mutable tile-row bitmap and emits
-non-overlapping rectangles capped at 2048 RGB565 pixels. `dte_next_dirty_band()`
-groups dirty tile rows into at most 64 physical rows, below the nRF EasyDMA
-65535-byte transfer limit at 280 pixels wide.
-
-## Optional animation bridge
-
-The public wrappers `dte_animation_options()`, `dte_set_animation()`,
-`dte_get_animation()`, `dte_set_animation_duration()`,
-`dte_get_animation_duration()` and `dte_force_redraw()` call weak optional
-theme hooks. A theme that does not implement them receives inert defaults.
-These controls are intended for preview and settings adapters; they are not a
-runtime theme registry.
+`scripts/test_preview.py` adds 81-frame replay over three viewports, touch and
+long-press lifecycle checks, deterministic repeat, and full RGB565 hash parity.
+This validates software behavior; physical SPI timing and panel output remain
+separate hardware gates.

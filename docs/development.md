@@ -15,6 +15,11 @@ Theme 的 firmware、native 与 WASM 应编译同一组 C 源。先以
 验证多分辨率 native/WASM 帧哈希、确定性与触摸语义。浏览器 CSS 缩放后的
 截图不得作为 framebuffer 精度依据。
 
+构建器会在写出最终 HTML 前，先以 native 与 WASM 双路检验 ABI 1.2：版本、
+required-prefix 尾界、dirty rect 边界、frame/draw 时间戳配对及 buffer 容量。
+此快速门禁失败即终止；不得以能加载页面代替接口可靠性证明。完整 replay 则仍
+由 `test_preview.py` 执行。
+
 ```sh
 python3 scripts/build_preview.py \
   --lvgl /path/to/lvgl --theme /path/to/theme \
@@ -65,6 +70,10 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 
 动画比较须固定 snapshot 与 timestamp。先验证静态关键帧，再比较动作序列；
 逻辑 60Hz 只约束 deadline，实机 SPI 帧率仍须以固件日志及屏幕结果验证。
+
+旧 raster Theme 迁移 ABI 1.2 时，可先用 `DTE_THEME_RASTER_ADAPTER` 保持视觉
+代码不变；WASM 闸门通过后，再按性能需要把 `frame` 与 `draw` 拆成原生区域实现。
+固件不得自行保存完整 RGB565 framebuffer；预览全帧仅供取图、hash 与比对。
 
 ## GitHub Actions preview
 

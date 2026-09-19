@@ -7,8 +7,11 @@ on:
       - '.github/workflows/preview-action.yml'
       - 'examples/minimal-theme/**'
       - 'include/**'
+      - 'boards/shields/dongle_screen_host/**'
+      - 'docs/**'
       - 'scripts/**'
       - 'src/**'
+      - 'tests/**'
       - 'web/**'
   push:
     branches: [main]
@@ -17,8 +20,11 @@ on:
       - '.github/workflows/preview-action.yml'
       - 'examples/minimal-theme/**'
       - 'include/**'
+      - 'boards/shields/dongle_screen_host/**'
+      - 'docs/**'
       - 'scripts/**'
       - 'src/**'
+      - 'tests/**'
       - 'web/**'
   workflow_dispatch:
 
@@ -52,3 +58,6 @@ jobs:
         env:
           ZDSE_INDEX_PATH: ${{ steps.preview.outputs.index-path }}
         run: test -s "$ZDSE_INDEX_PATH"
+
+      - name: Run C ABI and raster tests
+        run: python3 scripts/test_engine.py --lvgl .preview-deps/lvgl

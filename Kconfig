@@ -1,6 +1,7 @@
 config ZMK_DONGLE_SCREEN_ENGINE
     bool "Dongle Theme engine"
     default y if SHIELD_DONGLE_SCREEN_HOST
+    select ZMK_DONGLE_SCREEN_DIRECT_RGB565
 
 config ZMK_DONGLE_SCREEN_FPS
     int "Theme animation deadline frequency (not a guaranteed physical refresh rate)"
@@ -20,12 +21,21 @@ config ZMK_DONGLE_SCREEN_BRIGHTNESS
     depends on ZMK_DONGLE_SCREEN_ENGINE
 
 config ZMK_DONGLE_SCREEN_DIRECT_RGB565
-    bool "Send contiguous dirty RGB565 row bands directly through the display driver"
-    default n
+    bool "Send ABI 1.2 RGB565 regions directly through the display driver"
+    default y
     depends on ZMK_DONGLE_SCREEN_ENGINE
     help
-      Avoid LVGL canvas redraw/copy. The existing display driver retains SPI,
-      DMA, controller initialization and idle blanking ownership. One framebuffer.
+      Required by Theme ABI 1.2. LVGL retains screen lifecycle ownership while
+      the Engine renders bounded strips directly through the display driver.
+
+config ZMK_DONGLE_SCREEN_STRIP_PIXELS
+    int "Maximum RGB565 pixels in the firmware render strip"
+    default 4480
+    range 280 8960
+    depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
+    help
+      Bounds static render RAM independently of display area. 4480 pixels are
+      sixteen full rows at 280 pixels wide and require 8960 bytes.
 
 config ZMK_DONGLE_SCREEN_STARTUP_DELAY_MS
     int "Black screen settling time before the first theme frame (ms)"
@@ -52,5 +62,8 @@ config ZMK_DONGLE_SCREEN_DISTANCE_LUT
 
 config ZMK_DONGLE_SCREEN_PACKED_RECTS
     bool "Pack exact dirty rectangles for display transport (4 KiB scratch)"
-    default n
+    default y
     depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
+    help
+      Compatibility option retained for existing configurations. ABI 1.2
+      always renders exact dirty rectangles into the bounded strip buffer.

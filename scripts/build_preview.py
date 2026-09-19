@@ -13,7 +13,7 @@ def compile_variant(engine, lvgl, theme, output, manifest, variant):
     if not raster.exists(): subprocess.run([sys.executable,str(engine/'scripts/generate_raster_assets.py'),'--lvgl',str(lvgl.resolve()),'--output',str(raster)],check=True)
     sources=[engine/'src/engine.c',engine/'src/raster.c',engine/'src/ui.c']+[theme/s for s in source_list(manifest,variant)]
     common=['-O2','-fno-builtin','-ffp-contract=off','-I',str(engine/'include'),'-I',str(theme/'include'),'-I',str(output),*[str(s) for s in sources]]
-    exports=['dte_init','dte_init_ex','dte_last_status','dte_active_abi_version','dte_name_buffer','dte_set_state','dte_set_snapshot_v1_1','dte_set_battery_count','dte_set_display_stats','dte_set_startup_phase','dte_set_layer_name','dte_gesture','dte_gesture_x','dte_gesture_y','dte_backlight_get','dte_backlight_adjust','dte_touch','dte_touch_hint','dte_touch_active','dte_touch_cancel','dte_render','dte_render_v1_1','dte_pixels','dte_width','dte_height','dte_hash','dte_animation_options','dte_set_animation','dte_get_animation','dte_set_animation_duration','dte_get_animation_duration','dte_force_redraw','dtr_dirty_tiles',*manifest.get('exports',[]),*manifest.get('variant_exports',{}).get(variant,[])]
+    exports=['dte_init','dte_init_ex','dte_last_status','dte_active_abi_version','dte_name_buffer','dte_set_state','dte_set_snapshot','dte_set_battery_count','dte_set_display_stats','dte_set_startup_phase','dte_set_layer_name','dte_gesture','dte_gesture_x','dte_gesture_y','dte_backlight_get','dte_backlight_adjust','dte_touch','dte_touch_hint','dte_touch_active','dte_touch_cancel','dte_frame','dte_draw','dte_render','dte_pixels','dte_width','dte_height','dte_hash','dte_animation_options','dte_set_animation','dte_get_animation','dte_set_animation_duration','dte_get_animation_duration','dte_force_redraw','dtr_dirty_tiles',*manifest.get('exports',[]),*manifest.get('variant_exports',{}).get(variant,[])]
     clang=shutil.which('clang')
     if not clang or not shutil.which('wasm-ld'): raise RuntimeError('Clang with wasm-ld is required; enter a toolchain environment that provides both')
     env=os.environ.copy();env['NIX_HARDENING_ENABLE']='';env['NIX_LDFLAGS']=''
@@ -22,6 +22,9 @@ def compile_variant(engine, lvgl, theme, output, manifest, variant):
     subprocess.run([clang,*native_flags,*common,'-o',str(output/native_name)],check=True,env=env)
     metadata={'theme':manifest['id'],'variant':variant,'fps':60,'continuous_animation':bool(manifest.get('continuous_animation',False)),'hardware_simulation':{'profiles':['unlimited','nrf52840','custom'],'default':'nrf52840','estimate_only':True},'native_library':native_name,'shared_sources':[str(s) for s in sources],'render':'same C RGB565 rasterizer on native, WASM and firmware'}
     (output/'preview-manifest.json').write_text(json.dumps(metadata,indent=2))
+    # Do not emit an apparently usable preview until both binaries have passed
+    # the ABI probe. Full deterministic replay remains a separate test gate.
+    subprocess.run([sys.executable,str(engine/'scripts/test_preview.py'),'--api-only',str(output)],check=True)
     return metadata
 
 def render_page(engine, theme, output, manifest, variant, bundle=None):

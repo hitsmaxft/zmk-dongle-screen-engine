@@ -3,11 +3,12 @@
 A small static theme host and RGB565 renderer for ZMK dongles. It separates
 display ownership, ZMK state projection, touch dispatch and frame transport
 from the linked visual theme. Theme code stays in its own Zephyr module and
-defines one static v1 or ABI 1.1 descriptor.
+defines one static ABI 1.2 descriptor.
 
-Current Engine release: **1.1.2**. Engine release versions and Theme ABI
-versions are independent: Engine 1.1 retains Theme ABI v1 and adds the optional
-versioned Theme ABI 1.1.
+Current Engine release: **1.2.0** with Theme ABI **1.2**. This is an intentional
+break from the full-frame v1/1.1 contract: firmware now renders only requested
+RGB565 regions into a bounded strip buffer. Native and WASM previews still
+assemble a complete framebuffer for inspection and deterministic replay.
 
 This repository contains the engine only. It does not contain downstream
 themes, artwork, generated theme atlases, or product-specific animation labs.
@@ -53,17 +54,19 @@ on-device timing; calibrate the CPU multiplier with measured firmware data.
 
 ### Animation without a fixed player
 
-A theme owns its animation state machine. Its `render(snapshot, now, pixels)`
-callback returns nonzero while animation remains active; the host schedules the
-next absolute frame deadline on ZMK's display work queue. `now` is explicit, so
+A theme owns its animation state machine. Its `frame(snapshot, now, result)`
+callback publishes dirty rectangles and its `draw(snapshot, now, canvas)`
+callback shades one requested region. Flags distinguish continuous animation
+from an exact absolute deadline, which the ZMK host consumes directly. `now` is explicit, so
 native tests, WASM and firmware can replay the same timeline deterministically.
 Optional animation selection, duration and forced-redraw hooks are available to
 preview/settings adapters without making the engine interpret theme semantics.
 
 The configured 60Hz value is a logical deadline, not a claim that every SPI
 panel can present 60 physical frames per second. Retained tile damage, packed
-rectangles and direct RGB565 row bands let themes trade memory, draw cost and
-transport cost explicitly.
+rectangles and direct RGB565 strips let themes trade memory, draw cost and
+transport cost explicitly. The default 4,480-pixel strip occupies 8,960 bytes,
+instead of a 134,400-byte 280×240 framebuffer in firmware.
 
 ### Touch normalization
 
@@ -92,10 +95,10 @@ firmware renderer.
 
 ## Current contract
 
-The bootstrap ABI supports one compile-time theme, 240x240, 240x280 and
+ABI 1.2 supports one compile-time theme, 240x240, 240x280 and
 280x240 RGB565 surfaces, WPM/layer/endpoint/modifier/battery snapshots, tap,
 long press and four swipe directions, a configurable frame cadence, fixed Bayer RGB565
-dithering, retained tile damage and optional direct display writes.
+dithering, retained tile damage and bounded direct display writes.
 
 The host shield owns `zmk_display_status_screen()`. Do not combine it with
 another custom status-screen shield. The present touch adapter targets the
@@ -111,12 +114,12 @@ manifest, then include these shields in the dongle build:
 
     <display-and-touch-hardware> dongle_screen_host <your-theme-shield>
 
-The theme must include `zmk/dongle_theme/theme.h` and define either the frozen
-v1 `const struct dte_theme dte_selected_theme` or the additive ABI 1.1
-`const struct dte_theme_v1_1 dte_selected_theme_v1_1`. Existing v1 themes remain
-source-compatible. New integrations should use ABI 1.1 for sized structures,
-explicit validation status, fixed-width snapshots and render results. See the
-[API manual](docs/api.md), `tests/api_v1_1.c`, and `examples/minimal-theme`.
+The theme must include `zmk/dongle_theme/theme.h` and define
+`const struct dte_theme dte_selected_theme` with `DTE_THEME_INIT`. Its `frame`
+and `draw` callbacks use sized, fixed-width ABI structures. Existing raster
+themes can migrate with `DTE_THEME_RASTER_ADAPTER`, then move to native region
+callbacks when useful. See the [API manual](docs/api.md), `tests/api_v1_2.c`,
+and `examples/minimal-theme`.
 The short [theme examples](docs/examples.md) page also links external visual
 references.
 
@@ -141,8 +144,8 @@ default. Theme authors and agents should use the
 licensing and RGB565 validation rules; this README is only the short overview.
 
 Useful Kconfig options include `ZMK_DONGLE_SCREEN_FPS`,
-`ZMK_DONGLE_SCREEN_BRIGHTNESS`, `ZMK_DONGLE_SCREEN_DIRECT_RGB565`,
-`ZMK_DONGLE_SCREEN_PACKED_RECTS` and `ZMK_DONGLE_SCREEN_DONGLE_BATTERY`.
+`ZMK_DONGLE_SCREEN_BRIGHTNESS`, `ZMK_DONGLE_SCREEN_STRIP_PIXELS` and
+`ZMK_DONGLE_SCREEN_DONGLE_BATTERY`.
 
 ## Native and WASM preview
 
@@ -175,6 +178,10 @@ as GIF, WebP or video without browser capture.
 Open `.build/minimal-preview/index.html` locally. The replay test requires
 Clang with wasm32 support and Node.js; it verifies matching native/WASM RGB565
 frame hashes, long-press de-duplication and stable spatial dithering.
+`build_preview.py` first runs a fast native/WASM ABI gate, so it will not emit a
+usable HTML preview when versions, required-prefix handling, dirty bounds,
+frame/draw pairing or region capacity checks disagree. `test_preview.py` then
+runs the longer 81-frame, three-viewport parity replay.
 
 Themes with `variants` may also declare `common_sources`,
 `profile_variants`, and localized-independent `variant_display_names`. Build
@@ -202,7 +209,7 @@ without copying Engine scripts:
     ref: f1db87ee98f1810328a8419572fa42a3b5f352ae
     path: .preview-deps/lvgl
 - id: preview
-  uses: hitsmaxft/zmk-dongle-screen-engine/.github/actions/build-preview@v1.1.2
+  uses: hitsmaxft/zmk-dongle-screen-engine/.github/actions/build-preview@v1.2.0
   with:
     theme-path: themes/my-theme
     lvgl-path: .preview-deps/lvgl

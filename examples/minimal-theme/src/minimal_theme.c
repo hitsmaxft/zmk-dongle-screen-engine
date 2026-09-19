@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: MIT */
+#include <zmk/dongle_theme/adapter.h>
 #include <zmk/dongle_theme/raster.h>
 #include <zmk/dongle_theme/theme.h>
 
@@ -20,8 +21,7 @@ static void separator_dot(int cx, int cy, int radius, int angle) {
 
 static void shell_ring(int cx, int cy, int radius) {
   dtr_arc(cx, cy, radius - 4, radius, 0, 360, 104, 111, 117, 255);
-  dtr_arc_f(cx, cy, radius - 3, radius - 1.5f, 0, 360, 225, 229, 232,
-            255);
+  dtr_arc_f(cx, cy, radius - 3, radius - 1.5f, 0, 360, 225, 229, 232, 255);
   dtr_arc_f(cx, cy, radius - 1.5f, radius, 0, 360, 73, 79, 84, 255);
 }
 
@@ -59,7 +59,8 @@ static void gesture(int kind, uint32_t now) {
     page ^= 1;
 }
 
-static int render(const struct dte_snapshot *s, uint32_t now, uint16_t *pixels) {
+static int render(const struct dte_snapshot *s, uint32_t now,
+                  uint16_t *pixels) {
   (void)now;
   dtr_begin(pixels, width, height);
   dtr_clear(8, 10, 12);
@@ -68,14 +69,12 @@ static int render(const struct dte_snapshot *s, uint32_t now, uint16_t *pixels) 
   shell_ring(cx, cy, outer);
   batteries(s, cx, cy, outer - 11);
   dtr_arc(cx, cy, outer - 23, outer - 17, 0, 360, 29, 35, 39, 255);
-  dtr_arc(cx, cy, outer - 23, outer - 17, 210, 210 + s->wpm,
-          page ? 224 : 108,
+  dtr_arc(cx, cy, outer - 23, outer - 17, 210, 210 + s->wpm, page ? 224 : 108,
           page ? 92 : 174, page ? 72 : 220, 255);
-  dtr_text(page ? "STATUS" : s->layer_name, cx, cy - 8, 20, 238, 241, 243,
-           255, 1);
+  dtr_text(page ? "STATUS" : s->layer_name, cx, cy - 8, 20, 238, 241, 243, 255,
+           1);
   dtr_text("SWIPE OR TAP", cx, cy + 22, 10, 145, 153, 160, 255, 1);
   return 0;
 }
 
-const struct dte_theme dte_selected_theme = {
-    DTE_ABI_VERSION, "minimal", mount, gesture, render};
+DTE_THEME_RASTER_ADAPTER("minimal", mount, gesture, render);
