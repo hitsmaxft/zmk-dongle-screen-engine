@@ -32,6 +32,21 @@ permissions:
   contents: read
 
 jobs:
+  v2-pack-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out Engine
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate the allocation-free Format 1 envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -Iinclude src/v2/pack.c tests/pack_v2.c \
+            -o /tmp/zdse-pack-v2-test
+          /tmp/zdse-pack-v2-test
+
   minimal-theme:
     runs-on: ubuntu-24.04
     steps:

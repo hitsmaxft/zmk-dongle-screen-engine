@@ -11,4 +11,6 @@ if(CONFIG_ZMK_DONGLE_SCREEN_ENGINE)
   zephyr_library_include_directories(${CMAKE_CURRENT_BINARY_DIR})
   zephyr_library_compile_options(-O2 -ffp-contract=off)
   zephyr_library_sources(src/engine.c src/raster.c src/ui.c src/zmk_host.c)
+  zephyr_library_sources_ifdef(CONFIG_ZMK_DONGLE_SCREEN_ENGINE_V2_PREVIEW
+    src/v2/pack.c)
 endif()
