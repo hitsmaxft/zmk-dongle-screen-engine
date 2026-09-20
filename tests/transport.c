@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include <assert.h>
+#include <string.h>
 #include <zmk/dongle_theme/transport.h>
 int main(void) {
   for(int h=240;h<=280;h+=40) {
@@ -32,6 +33,37 @@ int main(void) {
       }
     }
     for(int y=0;y<h;y++)for(int x=0;x<w;x++)assert(covered[y*w+x]==!!(original[y/16]&(1u<<(x/16))));
+
+    memset(covered,0,sizeof(covered));
+    struct dte_dirty_rect packed[18];
+    int count=dte_collect_dirty_rects(original,w,h,packed,18);
+    assert(count>=0&&count<=18);
+    for(int i=0;i<count;i++){
+      rect=packed[i];
+      assert(rect.x>=0&&rect.y>=0&&rect.x+rect.width<=w&&rect.y+rect.height<=h);
+      for(int y=rect.y;y<rect.y+rect.height;y++)for(int x=rect.x;x<rect.x+rect.width;x++){
+        assert(!covered[y*w+x]);covered[y*w+x]=1;
+      }
+    }
+    for(int y=0;y<h;y++)for(int x=0;x<w;x++)
+      if(original[y/16]&(1u<<(x/16)))assert(covered[y*w+x]);
   }
+
+  uint32_t column[18]={0};
+  for(int y=0;y<15;y++)column[y]=0x3fu;
+  struct dte_dirty_rect packed[18];
+  int count=dte_collect_dirty_rects(column,280,240,packed,18);
+  assert(count==1&&packed[0].x==0&&packed[0].y==0&&
+         packed[0].width==96&&packed[0].height==240);
+
+  uint32_t ring[18]={0};
+  for(int y=0;y<15;y++){
+    int inset=y<8?7-y:y-7;
+    ring[y]=(1u<<inset)|(1u<<(17-inset));
+  }
+  count=dte_collect_dirty_rects(ring,280,240,packed,18);
+  assert(count>0&&count<=18);
+  int area=0;for(int i=0;i<count;i++)area+=packed[i].width*packed[i].height;
+  assert(area<280*240);
   return 0;
 }

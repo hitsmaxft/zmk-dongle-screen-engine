@@ -104,5 +104,12 @@ int main(void) {
   assert(dte_frame(2000, short_result_api) == DTE_STATUS_OK && frames == 2);
   assert(short_result_api->struct_size == DTE_FRAME_RESULT_REQUIRED_SIZE);
   assert(short_result.data.canary == 0x5aa5a55au);
+#if !defined(__ZEPHYR__)
+  assert(dte_render(3000) == 1);
+  assert(dte_preview_dirty_rects() == 1 && dte_preview_draw_calls() == 1);
+  assert(dte_preview_transfer_bytes() == 16 * 16 * 2);
+  assert(dte_render(3250) == 1);
+  assert(dte_preview_draw_calls() == 1 && dte_preview_transfer_bytes() == 0);
+#endif
   return 0;
 }

@@ -152,9 +152,21 @@ The ZMK host subdivides dirty rectangles into at most
 display driver. The default is 4,480 RGB565 pixels, or 8,960 bytes. Neither the
 Engine nor LVGL owns a full animation framebuffer in firmware.
 
+Before each strip is sent, the host hashes its 16×16 RGB565 output tiles against
+the last successfully produced tile hash. Only changed tiles are packed into
+bounded display rectangles. This preserves the ABI's caller-owned strip RAM
+model while avoiding an SPI full-frame transfer merely because a Theme supplied
+a conservative damage bound. A failed write invalidates the optimization and
+forces the next presentation to cover the full scene.
+
 `dte_render()` and preview-only `dte_pixels()`/`dte_hash()` assemble the same
 regions into a full buffer for native/WASM tools. They are not firmware storage
 contracts.
+
+The preview-only strip controls and counters replay the firmware order
+`frame → region → strip → draw`, including the configured strip height and
+tile-hash payload filtering. They exist for hardware simulation; Theme code
+must not depend on them.
 
 ## Gestures and optional controls
 

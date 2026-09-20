@@ -34,7 +34,9 @@ static struct k_spinlock state_lock;
 static bool asleep;
 static bool touch_release_pending;
 static uint32_t touch_contacts, touch_hints, touch_dropped;
-static uint32_t draw_us, draw_max_us, draw_count, refresh_us, refresh_count;
+static uint32_t plan_us,plan_max_us,plan_count;
+static uint32_t region_us,region_max_us,region_count;
+static uint32_t display_us,display_count,present_bytes,present_writes;
 static bool animation_open;
 static uint32_t animation_last, animation_us, animation_intervals;
 static uint32_t last_presented, stats_deadline;
@@ -47,6 +49,8 @@ static unsigned startup_attempts;
 static uint32_t deadline, last_report, frames;
 static uint16_t
     transfer_pixels[CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS] __aligned(4);
+static uint16_t packed_pixels[2048] __aligned(4);
+static uint32_t tile_hash[18 * 18];
 static void frame_work_cb(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(frame_work, frame_work_cb);
 static void set_backlight(int percent) {
@@ -113,10 +117,19 @@ static void direct_lvgl_flush(lv_display_t *display, const lv_area_t *area,
 }
 /* ABI 1.2+ renders final pixels directly into a bounded strip. The display
  * driver owns each synchronous buffer only until display_write() returns. */
+static uint32_t hash_tile(const uint16_t *pixels,int stride,int base_x,int base_y,
+                          int tile_x,int tile_y,int width,int height){
+  uint32_t hash=2166136261u;
+  int w=MIN(16,width-tile_x),h=MIN(16,height-tile_y);
+  for(int y=0;y<h;y++)for(int x=0;x<w;x++)
+    hash=(hash^pixels[(tile_y-base_y+y)*stride+tile_x-base_x+x])*16777619u;
+  return hash;
+}
+
 static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-  uint32_t started = k_cycle_get_32();
   bool sent = false;
+  bool force=transfer_failed;
   if (transfer_failed) {
     frame->flags |= DTE_RENDER_FRAME_CHANGED;
     frame->dirty_count = 1;
@@ -126,6 +139,7 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   for (unsigned i = 0; i < frame->dirty_count; i++) {
     const struct dte_rect *rect = &frame->dirty[i];
     int rows = CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS / rect->width;
+    rows=(rows/16)*16;
     if (rows < 1) {
       transfer_failed = true;
       LOG_ERR("render strip too small");
@@ -143,33 +157,49 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
       target.stride_pixels = rect->width;
       target.buffer_size = (uint32_t)rect->width * h * 2u;
       target.pixels = transfer_pixels;
-      if (dte_draw(now, &target) != DTE_STATUS_OK) {
+      uint32_t draw_started=k_cycle_get_32();
+      dte_result_t draw_status=dte_draw(now,&target);
+      uint32_t draw_elapsed=k_cyc_to_us_floor32(k_cycle_get_32()-draw_started);
+      region_us+=draw_elapsed;region_count++;
+      if(draw_elapsed>region_max_us)region_max_us=draw_elapsed;
+      if (draw_status != DTE_STATUS_OK) {
         transfer_failed = true;
         LOG_ERR("theme strip render failed");
         break;
       }
-      size_t count = (size_t)rect->width * h;
-      if (IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))
-        for (size_t n = 0; n < count; n++)
-          transfer_pixels[n] = __builtin_bswap16(transfer_pixels[n]);
-      struct display_buffer_descriptor desc = {.width = rect->width,
-                                               .height = h,
-                                               .pitch = rect->width,
-                                               .buf_size = count * 2u};
-      int rc = display_write(disp, rect->x, y, &desc, transfer_pixels);
-      if (rc) {
-        transfer_failed = true;
-        LOG_ERR("display strip failed: %d", rc);
-        break;
+      uint32_t changed[18]={0};
+      int tx0=rect->x/16,tx1=(rect->x+rect->width-1)/16;
+      int ty0=y/16,ty1=(y+h-1)/16;
+      for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++){
+        uint32_t hash=hash_tile(transfer_pixels,rect->width,rect->x,y,
+                                tx*16,ty*16,dte_width(),dte_height());
+        int index=ty*18+tx;
+        if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
+        tile_hash[index]=hash;
       }
-      sent = true;
+      struct dte_dirty_rect changed_rect;
+      while(dte_next_dirty_rect(changed,dte_width(),dte_height(),&changed_rect)){
+        int sx=changed_rect.x-rect->x,sy=changed_rect.y-y,n=0;
+        for(int yy=0;yy<changed_rect.height;yy++)for(int xx=0;xx<changed_rect.width;xx++)
+          packed_pixels[n++]=transfer_pixels[(sy+yy)*rect->width+sx+xx];
+        if(n>(int)(sizeof(packed_pixels)/sizeof(packed_pixels[0]))){
+          transfer_failed=true;LOG_ERR("packed rectangle exceeds scratch");break;
+        }
+        if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
+          packed_pixels[i]=__builtin_bswap16(packed_pixels[i]);
+        struct display_buffer_descriptor desc={.width=changed_rect.width,.height=changed_rect.height,
+          .pitch=changed_rect.width,.buf_size=(size_t)n*2u};
+        uint32_t write_started=k_cycle_get_32();
+        int rc=display_write(disp,changed_rect.x,changed_rect.y,&desc,packed_pixels);
+        display_us+=k_cyc_to_us_floor32(k_cycle_get_32()-write_started);
+        display_count++;present_writes++;present_bytes+=(uint32_t)n*2u;
+        if(rc){transfer_failed=true;LOG_ERR("display strip failed: %d",rc);break;}
+        sent=true;
+      }
+      if(transfer_failed)break;
     }
     if (transfer_failed)
       break;
-  }
-  if (sent) {
-    refresh_count++;
-    refresh_us += k_cyc_to_us_floor32(k_cycle_get_32() - started);
   }
   return sent && !transfer_failed;
 }
@@ -200,9 +230,9 @@ static void frame_work_cb(struct k_work *work) {
       frame_status == DTE_STATUS_OK &&
       (frame.flags & (DTE_RENDER_CONTINUOUS | DTE_RENDER_DEADLINE_VALID));
   uint32_t cost = k_cyc_to_us_floor32(k_cycle_get_32() - started);
-  draw_us += cost;
-  draw_max_us = MAX(draw_max_us, cost);
-  draw_count++;
+  plan_us += cost;
+  plan_max_us = MAX(plan_max_us, cost);
+  plan_count++;
   bool presented = frame_status == DTE_STATUS_OK && present_frame(now, &frame);
   reveal_startup();
   if (!startup_visible && transfer_failed && ++startup_attempts < 3)
@@ -454,14 +484,17 @@ static void diagnostic_cb(struct k_work *work) {
           device_is_ready(DEVICE_DT_GET(DT_CHOSEN(zmk_touch))), touch_contacts,
           touch_hints, touch_dropped, asleep);
 #endif
-  LOG_INF("10s frames=%u draw avg/max=%u/%u us; LVGL refresh=%u avg=%u us",
-          draw_count, draw_count ? draw_us / draw_count : 0, draw_max_us,
-          refresh_count, refresh_count ? refresh_us / refresh_count : 0);
+  LOG_INF("10s frame plan=%u avg/max=%u/%u us; region draw=%u avg/max=%u/%u us",
+          plan_count,plan_count?plan_us/plan_count:0,plan_max_us,
+          region_count,region_count?region_us/region_count:0,region_max_us);
+  LOG_INF("display writes=%u avg=%u us; payload=%u bytes (%u strips)",
+          display_count,display_count?display_us/display_count:0,
+          present_bytes,present_writes);
   LOG_INF(
       "raster avg ring/arcs/text=%u/%u/%u us",
-      draw_count ? k_cyc_to_us_floor32(dtr_profile_cycles[0]) / draw_count : 0,
-      draw_count ? k_cyc_to_us_floor32(dtr_profile_cycles[1]) / draw_count : 0,
-      draw_count ? k_cyc_to_us_floor32(dtr_profile_cycles[2]) / draw_count : 0);
+      region_count?k_cyc_to_us_floor32(dtr_profile_cycles[0])/region_count:0,
+      region_count?k_cyc_to_us_floor32(dtr_profile_cycles[1])/region_count:0,
+      region_count?k_cyc_to_us_floor32(dtr_profile_cycles[2])/region_count:0);
   dtr_profile_cycles[0] = dtr_profile_cycles[1] = dtr_profile_cycles[2] = 0;
   LOG_INF("animation intervals=%u fps_x10=%u; direct=%d", animation_intervals,
           animation_us ? (uint32_t)((uint64_t)animation_intervals * 10000000 /
@@ -473,7 +506,9 @@ static void diagnostic_cb(struct k_work *work) {
           NRF_CLOCK->HFCLKSTAT, NRF_SPIM3->FREQUENCY, NRF_NVMC->ICACHECNF);
 #endif
   animation_us = animation_intervals = 0;
-  draw_us = draw_count = draw_max_us = refresh_us = refresh_count = 0;
+  plan_us=plan_count=plan_max_us=0;
+  region_us=region_count=region_max_us=0;
+  display_us=display_count=present_bytes=present_writes=0;
   k_work_reschedule_for_queue(zmk_display_work_q(), &diagnostic_work,
                               K_SECONDS(10));
 }

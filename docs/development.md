@@ -72,7 +72,11 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 逻辑 60Hz 只约束 deadline，实机 SPI 帧率仍须以固件日志及屏幕结果验证。
 
 旧 raster Theme 迁移 ABI 1.3 时，可先用 `DTE_THEME_RASTER_ADAPTER` 保持视觉
-代码不变；WASM 闸门通过后，再按性能需要把 `frame` 与 `draw` 拆成原生区域实现。
+代码不变；其每个 firmware strip 均会重放 legacy renderer，故只可作正确性
+迁移门槛，不可作为高动态 Theme 的最终性能实现。WASM 硬件档位现复刻
+`frame → rect → strip → draw`，并显示 ABI 脏矩形、strip draw 次数及经 tile hash
+过滤后的实际 payload；必须在此路径达标后，再按性能需要把 `frame` 与 `draw`
+拆成原生区域实现。
 固件不得自行保存完整 RGB565 framebuffer；预览全帧仅供取图、hash 与比对。
 
 ## GitHub Actions preview

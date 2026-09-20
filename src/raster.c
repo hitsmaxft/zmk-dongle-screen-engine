@@ -268,8 +268,14 @@ void dtr_pixel565(int x, int y, uint16_t color) {
 void dtr_rect(int x, int y, int w, int h, int r, int g, int b, int a) {
   if (!dirty_rect(x, y, w, h) || a <= 0)
     return;
-  for (int j = y; j < y + h; j++)
-    for (int i = x; i < x + w; i++)
+  int left=x>dtr_clip.left?x:dtr_clip.left;
+  int top=y>dtr_clip.top?y:dtr_clip.top;
+  int right=x+w<dtr_clip.right?x+w:dtr_clip.right;
+  int bottom=y+h<dtr_clip.bottom?y+h:dtr_clip.bottom;
+  if(left<OX)left=OX;if(top<OY)top=OY;
+  if(right>OX+TW)right=OX+TW;if(bottom>OY+TH)bottom=OY+TH;
+  for (int j = top; j < bottom; j++)
+    for (int i = left; i < right; i++)
       dtr_pixel(i, j, r, g, b, a);
 }
 float dtr_root(float n) { return __builtin_sqrtf(n); }
@@ -579,8 +585,14 @@ void dtr_metal_ring(int cx, int cy, int R, int thickness,
   PROFILE_BEGIN;
   /* The moving assembly retains a dark disc and metal rim, with no overshoot.
    */
-  for (int y = cy - R - 1; y <= cy + R + 1; y++)
-    for (int x = cx - R - 1; x <= cx + R + 1; x++) {
+  int top=cy-R-1>dtr_clip.top?cy-R-1:dtr_clip.top;
+  int bottom=cy+R+2<dtr_clip.bottom?cy+R+2:dtr_clip.bottom;
+  int left=cx-R-1>dtr_clip.left?cx-R-1:dtr_clip.left;
+  int right=cx+R+2<dtr_clip.right?cx+R+2:dtr_clip.right;
+  if(top<OY)top=OY;if(bottom>OY+TH)bottom=OY+TH;
+  if(left<OX)left=OX;if(right>OX+TW)right=OX+TW;
+  for (int y = top; y < bottom; y++)
+    for (int x = left; x < right; x++) {
       int dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
       if (d2 > (R + 1) * (R + 1))
         continue;
@@ -603,16 +615,18 @@ void dtr_metal_ring_cached(int cx, int cy, int R, int thickness,
   PROFILE_BEGIN;
   int inner = R - thickness - 1;
   /* Disc is flat; only its scanline endpoints need square roots. */
-  for (int dy = -inner + 1; dy < inner; dy++) {
-    int y = cy + dy;
-    if (y < 0 || y >= H)
-      continue;
+  int top=cy-inner+1>dtr_clip.top?cy-inner+1:dtr_clip.top;
+  int bottom=cy+inner<dtr_clip.bottom?cy+inner:dtr_clip.bottom;
+  if(top<OY)top=OY;if(bottom>OY+TH)bottom=OY+TH;
+  if(top<0)top=0;if(bottom>H)bottom=H;
+  for (int y = top; y < bottom; y++) {
+    int dy=y-cy;
     int edge = (int)dtr_root(inner * inner - dy * dy - 1);
     int left = cx - edge, right = cx + edge;
-    if (left < 0)
-      left = 0;
-    if (right >= W)
-      right = W - 1;
+    if(left<dtr_clip.left)left=dtr_clip.left;
+    if(right>=dtr_clip.right)right=dtr_clip.right-1;
+    if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
+    if(left<0)left=0;if(right>=W)right=W-1;
     for (int x = left; x <= right; x++) {
       if (!dirty_pixel(x, y)) {
         x = ((x / 16) + 1) * 16 - 1;
@@ -623,7 +637,12 @@ void dtr_metal_ring_cached(int cx, int cy, int R, int thickness,
   }
   /* Build-time coverage/grey; quantization remains at destination coordinates
    * so moving the ring preserves the fixed Bayer matrix without shimmer. */
-  for (size_t i = 0; i < count; i++) {
+  int first_dy=dtr_clip.top-cy,last_dy=dtr_clip.bottom-1-cy;
+  if(first_dy<OY-cy)first_dy=OY-cy;
+  if(last_dy>OY+TH-1-cy)last_dy=OY+TH-1-cy;
+  size_t lo=0,hi=count;
+  while(lo<hi){size_t mid=lo+(hi-lo)/2;if(atlas[mid].y<first_dy)lo=mid+1;else hi=mid;}
+  for (size_t i = lo; i < count && atlas[i].y<=last_dy; i++) {
     const struct dtr_metal_texel *t = &atlas[i];
     int x = cx + t->x, y = cy + t->y;
     if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
@@ -639,6 +658,12 @@ void dtr_metal_ring_cached(int cx, int cy, int R, int thickness,
   PROFILE_END(0);
 }
 
+static int dtr_scale_offset(int value,int source_radius,int target_radius){
+  int scaled=value*target_radius;
+  return scaled>=0?(scaled+source_radius/2)/source_radius:
+                   (scaled-source_radius/2)/source_radius;
+}
+
 void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
                            int thickness, const struct dtr_metal_texel *atlas,
                            size_t count) {
@@ -646,27 +671,32 @@ void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
     return;
   PROFILE_BEGIN;
   int inner = target_radius - thickness - 1;
-  for (int dy = -inner + 1; dy < inner; dy++) {
-    int y = cy + dy;
-    if (y < 0 || y >= H)
-      continue;
+  int top=cy-inner+1>dtr_clip.top?cy-inner+1:dtr_clip.top;
+  int bottom=cy+inner<dtr_clip.bottom?cy+inner:dtr_clip.bottom;
+  if(top<OY)top=OY;if(bottom>OY+TH)bottom=OY+TH;
+  if(top<0)top=0;if(bottom>H)bottom=H;
+  for (int y = top; y < bottom; y++) {
+    int dy=y-cy;
     int edge = (int)dtr_root(inner * inner - dy * dy - 1);
     int left = cx - edge, right = cx + edge;
-    if (left < 0)
-      left = 0;
-    if (right >= W)
-      right = W - 1;
+    if(left<dtr_clip.left)left=dtr_clip.left;
+    if(right>=dtr_clip.right)right=dtr_clip.right-1;
+    if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
+    if(left<0)left=0;if(right>=W)right=W-1;
     for (int x = left; x <= right; x++)
       if (dirty_pixel(x, y))
         dtr_pixel565(x, y, dtr_rgb(8, 10, 12));
   }
-  for (size_t i = 0; i < count; i++) {
+  int first_y=dtr_clip.top;if(first_y<OY)first_y=OY;
+  int last_y=dtr_clip.bottom-1;if(last_y>OY+TH-1)last_y=OY+TH-1;
+  size_t lo=0,hi=count;
+  while(lo<hi){size_t mid=lo+(hi-lo)/2;
+    if(cy+dtr_scale_offset(atlas[mid].y,source_radius,target_radius)<first_y)lo=mid+1;else hi=mid;}
+  for (size_t i = lo; i < count; i++) {
     const struct dtr_metal_texel *t = &atlas[i];
-    int px = t->x * target_radius, py = t->y * target_radius;
-    int x = cx + (px >= 0 ? (px + source_radius / 2) / source_radius
-                          : (px - source_radius / 2) / source_radius);
-    int y = cy + (py >= 0 ? (py + source_radius / 2) / source_radius
-                          : (py - source_radius / 2) / source_radius);
+    int x=cx+dtr_scale_offset(t->x,source_radius,target_radius);
+    int y=cy+dtr_scale_offset(t->y,source_radius,target_radius);
+    if(y>last_y)break;
     if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
         y >= dtr_clip.bottom || !dirty_pixel(x, y))
       continue;

@@ -31,5 +31,21 @@ int main(void) {
   assert(pixels[0] == 1 && pixels[1] == 2);
   assert(pixels[2] == 3 && pixels[3] == 4);
   dtr_end_canvas();
+
+  static uint16_t full[64*64];
+  static const struct dtr_metal_texel metal[]={{0,-20,220,255},{-20,0,180,255},
+                                               {20,0,120,255},{0,20,60,255}};
+  dtr_begin(full,64,64);dtr_clear(8,10,12);
+  dtr_metal_ring_cached(32,32,20,3,metal,4);
+  uint16_t region[32*8+2];region[0]=0x55aa;region[32*8+1]=0xaa55;
+  struct dte_canvas strip=DTE_CANVAS_INIT;
+  strip.scene_width=64;strip.scene_height=64;strip.origin_x=16;strip.origin_y=20;
+  strip.width=32;strip.height=8;strip.stride_pixels=32;
+  strip.buffer_size=32*8*2;strip.pixels=region+1;
+  dtr_begin_canvas(&strip);dtr_clear(8,10,12);
+  dtr_metal_ring_cached(32,32,20,3,metal,4);dtr_end_canvas();
+  assert(region[0]==0x55aa&&region[32*8+1]==0xaa55);
+  for(int y=0;y<8;y++)for(int x=0;x<32;x++)
+    assert(region[1+y*32+x]==full[(20+y)*64+16+x]);
   return 0;
 }

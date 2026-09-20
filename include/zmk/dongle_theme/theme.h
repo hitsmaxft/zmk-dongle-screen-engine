@@ -157,6 +157,10 @@ int dte_render(uint32_t now);
 #if !defined(__ZEPHYR__)
 uint16_t *dte_pixels(void);
 uint32_t dte_hash(void);
+int dte_preview_set_strip_pixels(int pixels);
+uint32_t dte_preview_transfer_bytes(void);
+uint32_t dte_preview_dirty_rects(void);
+uint32_t dte_preview_draw_calls(void);
 #endif
 int dte_width(void);
 int dte_height(void);

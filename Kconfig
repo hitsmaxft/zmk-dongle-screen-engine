@@ -31,11 +31,12 @@ config ZMK_DONGLE_SCREEN_DIRECT_RGB565
 config ZMK_DONGLE_SCREEN_STRIP_PIXELS
     int "Maximum RGB565 pixels in the firmware render strip"
     default 4480
-    range 280 8960
+    range 4480 8960
     depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
     help
       Bounds static render RAM independently of display area. 4480 pixels are
-      sixteen full rows at 280 pixels wide and require 8960 bytes.
+      sixteen full rows at 280 pixels wide and require 8960 bytes; the
+      16-row minimum keeps region hashes and transfer tiles aligned.
 
 config ZMK_DONGLE_SCREEN_STARTUP_DELAY_MS
     int "Black screen settling time before the first theme frame (ms)"

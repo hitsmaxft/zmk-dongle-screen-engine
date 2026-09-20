@@ -38,6 +38,12 @@ The parity replay compares native and WASM RGB565 hashes across three display
 sizes. It also verifies long-press de-duplication and that fixed spatial Bayer
 dithering does not shimmer between stationary frames.
 
+The nRF52840 preset replays ABI 1.3 exactly as firmware does: frame planning,
+dirty regions, bounded strips, repeated region draw calls and tile-hash-filtered
+payload. It reports ABI rectangles and strip draws alongside bytes, so a
+compatibility adapter or a conservative damage declaration cannot appear faster
+in WASM than it will on the device.
+
 ### TRE reusable render core
 
 ABI 1.3 extracts TRE (Tiled Render Engine) beneath the Theme API. TRE provides
