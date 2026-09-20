@@ -111,7 +111,7 @@ static void direct_lvgl_flush(lv_display_t *display, const lv_area_t *area,
   LOG_WRN("suppressed LVGL flush while direct renderer owns the panel");
   lv_display_flush_ready(display);
 }
-/* ABI 1.2 renders final pixels directly into a bounded strip. The display
+/* ABI 1.2+ renders final pixels directly into a bounded strip. The display
  * driver owns each synchronous buffer only until display_write() returns. */
 static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));

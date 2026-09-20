@@ -90,7 +90,7 @@ static void reset_state(void) {
 dte_result_t dte_validate_theme(const struct dte_theme *theme) {
   if (!theme)
     return DTE_STATUS_INVALID_ARGUMENT;
-  if (theme->abi_version != DTE_ABI_VERSION_V1_2)
+  if (theme->abi_version != DTE_ABI_VERSION_V1_3)
     return DTE_STATUS_UNSUPPORTED_ABI;
   if (theme->struct_size < DTE_THEME_REQUIRED_SIZE)
     return DTE_STATUS_STRUCT_TOO_SMALL;
@@ -120,7 +120,7 @@ dte_result_t dte_init_ex(int32_t w, int32_t h) {
     return last_status;
   last_status = dte_selected_theme.mount(w, h, 0);
   if (last_status == DTE_STATUS_OK)
-    active_abi_version = DTE_ABI_VERSION_V1_2;
+    active_abi_version = DTE_ABI_VERSION_V1_3;
   return last_status;
 }
 void dte_init(int w, int h) { (void)dte_init_ex(w, h); }
@@ -133,14 +133,14 @@ char *dte_name_buffer(void) { return name_buffer; }
 dte_result_t dte_set_snapshot(const struct dte_snapshot *snapshot) {
   if (!snapshot)
     return last_status = DTE_STATUS_INVALID_ARGUMENT;
-  if (snapshot->abi_version != DTE_ABI_VERSION_V1_2)
+  if (snapshot->abi_version != DTE_ABI_VERSION_V1_3)
     return last_status = DTE_STATUS_UNSUPPORTED_ABI;
   if (snapshot->struct_size < DTE_SNAPSHOT_REQUIRED_SIZE)
     return last_status = DTE_STATUS_STRUCT_TOO_SMALL;
   uint64_t valid = snapshot->valid_mask & DTE_SNAPSHOT_VALID_ALL;
   dte_memzero(&state, sizeof(state));
   dte_memcopy(&state, snapshot, DTE_SNAPSHOT_REQUIRED_SIZE);
-  state.abi_version = DTE_ABI_VERSION_V1_2;
+  state.abi_version = DTE_ABI_VERSION_V1_3;
   state.struct_size = sizeof(state);
   state.valid_mask = valid;
   state.battery_count = clamp(state.battery_count, 2, 3);
@@ -223,7 +223,7 @@ static int rect_valid(const struct dte_rect *r) {
 dte_result_t dte_frame(uint32_t now, struct dte_frame_result *result) {
   if (!result)
     return last_status = DTE_STATUS_INVALID_ARGUMENT;
-  if (result->abi_version != DTE_ABI_VERSION_V1_2)
+  if (result->abi_version != DTE_ABI_VERSION_V1_3)
     return last_status = DTE_STATUS_UNSUPPORTED_ABI;
   if (result->struct_size < DTE_FRAME_RESULT_REQUIRED_SIZE)
     return last_status = DTE_STATUS_STRUCT_TOO_SMALL;
@@ -234,7 +234,7 @@ dte_result_t dte_frame(uint32_t now, struct dte_frame_result *result) {
   dte_result_t status = dte_selected_theme.frame(&state, now, &out);
   if (status != DTE_STATUS_OK)
     return last_status = status;
-  if (out.abi_version != DTE_ABI_VERSION_V1_2 ||
+  if (out.abi_version != DTE_ABI_VERSION_V1_3 ||
       out.struct_size < DTE_FRAME_RESULT_REQUIRED_SIZE)
     return last_status = DTE_STATUS_UNSUPPORTED_ABI;
   if (out.dirty_count > DTE_MAX_DIRTY_RECTS)
@@ -255,7 +255,7 @@ dte_result_t dte_frame(uint32_t now, struct dte_frame_result *result) {
 dte_result_t dte_draw(uint32_t now, const struct dte_canvas *canvas) {
   if (!canvas || !canvas->pixels)
     return last_status = DTE_STATUS_INVALID_ARGUMENT;
-  if (canvas->abi_version != DTE_ABI_VERSION_V1_2)
+  if (canvas->abi_version != DTE_ABI_VERSION_V1_3)
     return last_status = DTE_STATUS_UNSUPPORTED_ABI;
   if (canvas->struct_size < DTE_CANVAS_REQUIRED_SIZE)
     return last_status = DTE_STATUS_STRUCT_TOO_SMALL;

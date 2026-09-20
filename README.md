@@ -3,12 +3,12 @@
 A small static theme host and RGB565 renderer for ZMK dongles. It separates
 display ownership, ZMK state projection, touch dispatch and frame transport
 from the linked visual theme. Theme code stays in its own Zephyr module and
-defines one static ABI 1.2 descriptor.
+defines one static ABI 1.3 descriptor.
 
-Current Engine release: **1.2.0** with Theme ABI **1.2**. This is an intentional
-break from the full-frame v1/1.1 contract: firmware now renders only requested
-RGB565 regions into a bounded strip buffer. Native and WASM previews still
-assemble a complete framebuffer for inspection and deterministic replay.
+Current development version: **1.3.0** with Theme ABI **1.3** and TRE ABI
+**1.0**. Firmware renders only requested RGB565 regions into a bounded strip
+buffer. Native and WASM previews assemble a complete framebuffer for inspection
+and deterministic replay.
 
 This repository contains the engine only. It does not contain downstream
 themes, artwork, generated theme atlases, or product-specific animation labs.
@@ -37,6 +37,15 @@ simulated display remains entirely theme-owned.
 The parity replay compares native and WASM RGB565 hashes across three display
 sizes. It also verifies long-press de-duplication and that fixed spatial Bayer
 dithering does not shimmer between stationary frames.
+
+### TRE reusable render core
+
+ABI 1.3 extracts TRE (Tiled Render Engine) beneath the Theme API. TRE provides
+explicit render contexts, bounded RGB565 surfaces, keyed/masked images, A4 and
+MONO1 coverage, atlas tiles, glyph coverage and caller-owned damage tracking.
+It has no ZMK or theme-state dependencies and is intended to be shared by Theme
+1.x, the `.zds` runtime and later frontends. Existing `dtr_*`/`dte_ui_*` calls
+remain compatibility and effects helpers. See the [API manual](docs/api.md).
 
 The preview shell also contains a hardware-budget simulator. Its nRF52840 +
 ST7789 preset uses the board's 32 MHz SPI ceiling, direct RGB565 dirty row
@@ -95,7 +104,7 @@ firmware renderer.
 
 ## Current contract
 
-ABI 1.2 supports one compile-time theme, 240x240, 240x280 and
+ABI 1.3 supports one compile-time theme, 240x240, 240x280 and
 280x240 RGB565 surfaces, WPM/layer/endpoint/modifier/battery snapshots, tap,
 long press and four swipe directions, a configurable frame cadence, fixed Bayer RGB565
 dithering, retained tile damage and bounded direct display writes.
@@ -215,12 +224,21 @@ without copying Engine scripts:
     lvgl-path: .preview-deps/lvgl
     output-path: site/my-theme
     # all-variants: 'true'  # optional profile bundle
+    target-fps: '24'
+    spi-mhz: '32'
+    dirty-percent: '20'
+    # firmware-map: build/zephyr/zmk.map
+    # baseline-budget-report: baseline/budget-report.json
+    # max-firmware-ram-bytes: '131072'
 ```
 
 The Action installs the Linux Clang/WASM toolchain when necessary, builds the
-native and WASM renderers, runs parity replay, and exposes `index-path` and
-`output-path` only after verification succeeds. Pin the Engine tag and LVGL
-revision in release workflows.
+native and WASM renderers, runs parity replay, and exposes `index-path`,
+`output-path`, `budget-report` and `budget-summary` only after verification
+succeeds. Budget reports estimate RGB565 SPI payload and strip RAM; when given
+a final Zephyr map they also report `_flash_used` and `_image_ram_size`, compare
+an optional baseline and enforce configured ceilings. Pin the Engine tag and
+LVGL revision in release workflows.
 
 ## License
 

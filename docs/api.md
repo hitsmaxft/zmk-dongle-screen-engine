@@ -2,16 +2,66 @@
 
 ## Scope and version
 
-Engine 1.2.0 exposes Theme ABI `0x0102`. It links one compile-time Theme and
-supports 280×240, 240×280 and 240×240 RGB565 scenes. ABI 1.2 intentionally
-replaces the v1/1.1 full-frame callback: firmware owns only a bounded transfer
-strip, while native and WASM builds retain a preview-only full framebuffer.
+Engine 1.3.0 exposes Theme ABI `0x0103` and TRE ABI `0x0100`. It links one
+compile-time Theme and supports 280×240, 240×280 and 240×240 RGB565 scenes.
+The Theme region contract remains the bounded ABI 1.2 design; ABI 1.3 adds the
+Theme-independent TRE render core shared by firmware, native and WASM builds.
 
 Every cross-module structure starts with `abi_version` and `struct_size`, uses
 fixed-width integers, and defines a `*_REQUIRED_SIZE`. ABI functions return the
 fixed-width `int32_t` alias `dte_result_t`; C enums are constants only. The Engine reads or
 writes only that required prefix and ignores a compatible caller tail. A wrong
 ABI is rejected; it is never silently downgraded.
+
+## TRE render core
+
+TRE is the allocation-free, integer-first layer beneath Theme code. Its public
+headers are independent of ZMK state and live under `include/tre/`:
+
+- `surface.h` defines a bounded caller-owned RGB565 LE surface/view;
+- `render.h` defines an explicit render context, clip, pixel, fill and line;
+- `image.h` defines opaque/keyed RGB565, RGB565+A1, MONO1 and A4 image views,
+  source rectangles, X/Y flips and minimal coverage glyphs;
+- `damage.h` accepts caller-owned storage while keeping its representation
+  private;
+- `tile.h` draws fixed-size atlas cells without introducing a scene graph.
+
+All exposed records use a sized prefix and TRE's independent ABI version.
+`tre_damage_storage_size()` and `tre_damage_storage_align()` let callers reserve
+bounded storage without a heap. If a rectangle list cannot represent collected
+damage, TRE reports one full-scene rectangle rather than truncating damage.
+
+The existing `dtr_*` and `dte_ui_*` APIs remain compatibility/effects facades.
+Opaque/keyed sprite draws borrow a short-lived TRE surface/context view, so the
+facade adds no persistent renderer state. Theme 1.x, future `.zds` execution
+and later frontends thereby converge on the same surface and image rules.
+TRE deliberately contains no WPM, battery, BLE, animation, scene-graph or VM
+semantics.
+
+### Initial firmware footprint
+
+The ABI 1.3 development branch was linked with section garbage collection for
+two nRF52840 Cornix builds. The compatibility facade keeps no persistent TRE
+context; its surface/context view is bounded stack state during a sprite draw.
+Unused image, damage, tile and glyph routines are discarded independently.
+Radar and Neon Cat each matched ABI 1.2 framebuffer hashes exactly over a
+36-frame, three-viewport compatibility replay.
+
+Final whole-image measurements are recorded from the release-candidate build,
+rather than inferred from individual symbols. Physical panel throughput remains
+outside this software/link validation.
+
+With identical nRF52840 Cornix configurations, Radar remained exactly 522,076
+Flash bytes and 126,888 RAM bytes from ABI 1.2 to 1.3 because unused TRE code
+was link-collected. Neon Cat changed from 708,284 to 710,332 Flash bytes
+(+2,048) while RAM remained exactly 124,840 bytes. Its opaque/keyed row fast
+path reduced a 60-frame WASM replay median from 580.2 to 404.4 microseconds per
+frame (-30.3%); this is a software comparison, not an nRF52840 cycle count.
+
+Framebuffer and dirty hashes remained exact, so ABI 1.3 changes no SPI payload.
+At 280×240 RGB565, 24 FPS and 20% dirty area, the declared model is 26,880
+bytes/frame, 645,120 bytes/s and 6.72 ms transfer time at 32 MHz (16.13% of the
+frame budget). Window commands, DMA gaps and physical-panel timing are excluded.
 
 ## Theme descriptor
 
@@ -121,7 +171,7 @@ runtime Theme registry.
 
 ## Raster and shared utilities
 
-`zmk/dongle_theme/raster.h` provides RGB565 primitives, fixed Bayer dithering,
+`zmk/dongle_theme/raster.h` provides ABI 1.x compatibility primitives, fixed Bayer dithering,
 text and metallic ring helpers. Retained themes may declare 16×16 tile damage
 with `dtr_damage_begin()`, `dtr_damage_rect()`, `dtr_damage_ring()` and
 `dtr_damage_all()`.

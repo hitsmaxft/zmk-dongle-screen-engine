@@ -22,10 +22,14 @@ def main(lvgl: Path) -> None:
         common = [clang, "-std=c11", "-Wall", "-Wextra", "-Werror",
                   "-ffp-contract=off", "-I", str(engine / "include"),
                   "-I", str(output)]
+        tre = ["src/tre/surface.c", "src/tre/render.c", "src/tre/image.c",
+               "src/tre/damage.c", "src/tre/tile.c"]
         suites = {
-            "api-v1-2": ["tests/api_v1_2.c", "src/engine.c", "src/raster.c", "src/ui.c"],
-            "touch": ["tests/touch.c", "src/engine.c", "src/raster.c", "src/ui.c"],
-            "density": ["tests/density.c", "src/raster.c"],
+            "tre-core": ["tests/tre_core.c", *tre],
+            "tre-compat": ["tests/tre_compat.c", "src/raster.c", "src/ui.c", *tre],
+            "api-v1-3": ["tests/api_v1_2.c", "src/engine.c", "src/raster.c", "src/ui.c", *tre],
+            "touch": ["tests/touch.c", "src/engine.c", "src/raster.c", "src/ui.c", *tre],
+            "density": ["tests/density.c", "src/raster.c", *tre],
             "transport": ["tests/transport.c"],
         }
         for name, sources in suites.items():

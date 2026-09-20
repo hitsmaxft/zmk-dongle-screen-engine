@@ -1,8 +1,35 @@
 /* SPDX-License-Identifier: MIT */
+#include "tre_compat.h"
+#include <tre/image.h>
 #include <zmk/dongle_theme/raster.h>
 #include <zmk/dongle_theme/ui.h>
 
+static int draw_tre_sprite(const struct dte_sprite *sprite, int x, int y,
+                           int keyed) {
+  if (!sprite || !sprite->pixels || !sprite->width || !sprite->height)
+    return 0;
+  uint64_t bytes = (uint64_t)sprite->width * sprite->height * 2u;
+  if (bytes > UINT32_MAX)
+    return 0;
+  struct tre_image image = TRE_IMAGE_INIT;
+  image.width = sprite->width;
+  image.height = sprite->height;
+  image.stride_bytes = (uint32_t)sprite->width * 2u;
+  image.format = keyed ? TRE_IMAGE_RGB565_KEYED_LE : TRE_IMAGE_RGB565_LE;
+  image.transparent_key = 1;
+  image.data_size = (uint32_t)bytes;
+  image.data = (const uint8_t *)sprite->pixels;
+  struct tre_rect source = {0, 0, sprite->width, sprite->height};
+  struct tre_surface surface;
+  struct tre_render_ctx ctx;
+  if (!dtr_compat_begin_image(&surface, &ctx))
+    return 0;
+  return tre_draw_image(&ctx, &image, &source, x, y, 0, 255, 0) == TRE_OK;
+}
+
 void dte_sprite_blit(const struct dte_sprite *sprite, int x, int y, int alpha) {
+  if (alpha == 255 && draw_tre_sprite(sprite, x, y, 1))
+    return;
   int count = sprite->width * sprite->height;
   for (int i = 0; i < count; i++) {
     if (sprite->pixels[i] == 1)
@@ -20,6 +47,8 @@ void dte_sprite_blit(const struct dte_sprite *sprite, int x, int y, int alpha) {
 }
 
 void dte_sprite_blit_opaque(const struct dte_sprite *sprite, int x, int y) {
+  if (draw_tre_sprite(sprite, x, y, 0))
+    return;
   int count = sprite->width * sprite->height;
   for (int i = 0; i < count; i++)
     dtr_pixel565(x + i % sprite->width, y + i / sprite->width,

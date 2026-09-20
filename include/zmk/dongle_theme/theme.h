@@ -4,11 +4,12 @@
 #include <stdint.h>
 
 #define DTE_ENGINE_VERSION_MAJOR 1u
-#define DTE_ENGINE_VERSION_MINOR 2u
+#define DTE_ENGINE_VERSION_MINOR 3u
 #define DTE_ENGINE_VERSION_PATCH 0u
-#define DTE_ENGINE_VERSION_STRING "1.2.0"
-#define DTE_ABI_VERSION 0x0102u
-#define DTE_ABI_VERSION_V1_2 DTE_ABI_VERSION
+#define DTE_ENGINE_VERSION_STRING "1.3.0"
+#define DTE_ABI_VERSION 0x0103u
+#define DTE_ABI_VERSION_V1_2 0x0102u
+#define DTE_ABI_VERSION_V1_3 DTE_ABI_VERSION
 #define DTE_MAX_PIXELS (280 * 240)
 #define DTE_MAX_DIRTY_RECTS 18u
 #define DTE_PIXEL_FORMAT_RGB565_LE 1u
@@ -59,7 +60,8 @@ typedef int32_t dte_result_t;
 #define DTE_SNAPSHOT_VALID_LAYER_NAME (UINT64_C(1) << 14)
 #define DTE_SNAPSHOT_VALID_ALL ((UINT64_C(1) << 15) - 1)
 
-/* ABI 1.2 intentionally replaces the full-frame v1/v1.1 Theme contract. */
+/* ABI 1.2 replaced the full-frame v1/v1.1 Theme contract. ABI 1.3 retains
+ * that region contract while adding the independent TRE render core. */
 struct dte_snapshot {
   uint16_t abi_version, struct_size;
   uint32_t reserved0;
@@ -75,7 +77,7 @@ struct dte_snapshot {
 #define DTE_SNAPSHOT_REQUIRED_SIZE                                             \
   ((uint16_t)offsetof(struct dte_snapshot, reserved))
 #define DTE_SNAPSHOT_INIT                                                      \
-  {.abi_version = DTE_ABI_VERSION_V1_2,                                        \
+  {.abi_version = DTE_ABI_VERSION_V1_3,                                        \
    .struct_size = (uint16_t)sizeof(struct dte_snapshot),                       \
    .valid_mask = DTE_SNAPSHOT_VALID_ALL}
 
@@ -98,7 +100,7 @@ struct dte_frame_result {
 #define DTE_FRAME_RESULT_REQUIRED_SIZE                                         \
   ((uint16_t)offsetof(struct dte_frame_result, reserved))
 #define DTE_FRAME_RESULT_INIT                                                  \
-  {.abi_version = DTE_ABI_VERSION_V1_2,                                        \
+  {.abi_version = DTE_ABI_VERSION_V1_3,                                        \
    .struct_size = (uint16_t)sizeof(struct dte_frame_result)}
 
 struct dte_canvas {
@@ -113,7 +115,7 @@ struct dte_canvas {
 #define DTE_CANVAS_REQUIRED_SIZE                                               \
   ((uint16_t)offsetof(struct dte_canvas, reserved))
 #define DTE_CANVAS_INIT                                                        \
-  {.abi_version = DTE_ABI_VERSION_V1_2,                                        \
+  {.abi_version = DTE_ABI_VERSION_V1_3,                                        \
    .struct_size = (uint16_t)sizeof(struct dte_canvas),                         \
    .pixel_format = DTE_PIXEL_FORMAT_RGB565_LE}
 
@@ -133,7 +135,7 @@ struct dte_theme {
 #define DTE_THEME_REQUIRED_SIZE ((uint16_t)offsetof(struct dte_theme, reserved))
 #define DTE_THEME_INIT(theme_id, theme_capabilities, mount_fn, gesture_fn,     \
                        frame_fn, draw_fn)                                      \
-  {.abi_version = DTE_ABI_VERSION_V1_2,                                        \
+  {.abi_version = DTE_ABI_VERSION_V1_3,                                        \
    .struct_size = (uint16_t)sizeof(struct dte_theme),                          \
    .capabilities = (theme_capabilities),                                       \
    .id = (theme_id),                                                           \
