@@ -1,5 +1,5 @@
 name: Build ZDSE theme preview
-description: Build a self-contained ZDSE preview and verify native/WASM parity.
+description: Build a self-contained preview, verify parity and report RAM/Flash/SPI budgets.
 
 inputs:
   theme-path:
@@ -20,6 +20,50 @@ inputs:
     description: Build every profile_variants entry into one selectable page.
     required: false
     default: 'false'
+  firmware-map:
+    description: Optional Zephyr final map; enables real firmware RAM and Flash reporting.
+    required: false
+    default: ''
+  baseline-budget-report:
+    description: Optional prior budget-report.json used to calculate deltas.
+    required: false
+    default: ''
+  screen-width:
+    description: Physical RGB565 scene width used by the SPI estimate.
+    required: false
+    default: '280'
+  screen-height:
+    description: Physical RGB565 scene height used by the SPI estimate.
+    required: false
+    default: '240'
+  target-fps:
+    description: Target physical display update rate.
+    required: false
+    default: '24'
+  spi-mhz:
+    description: Effective SPI clock used by the transport estimate.
+    required: false
+    default: '32'
+  dirty-percent:
+    description: Conservative average dirty area percentage.
+    required: false
+    default: '20'
+  strip-pixels:
+    description: Firmware RGB565 strip-buffer capacity in pixels.
+    required: false
+    default: '4480'
+  max-firmware-flash-bytes:
+    description: Optional firmware Flash ceiling; zero disables the limit.
+    required: false
+    default: '0'
+  max-firmware-ram-bytes:
+    description: Optional firmware RAM ceiling; zero disables the limit.
+    required: false
+    default: '0'
+  max-spi-utilization-percent:
+    description: Maximum estimated fraction of one frame budget spent transferring pixels.
+    required: false
+    default: '85'
 
 outputs:
   index-path:
@@ -28,6 +72,12 @@ outputs:
   output-path:
     description: Absolute path to the verified preview directory.
     value: ${{ steps.preview.outputs.output-path }}
+  budget-report:
+    description: Absolute path to budget-report.json.
+    value: ${{ steps.budget.outputs.budget-report }}
+  budget-summary:
+    description: Absolute path to budget-summary.md.
+    value: ${{ steps.budget.outputs.budget-summary }}
 
 runs:
   using: composite
@@ -76,3 +126,44 @@ runs:
         test -f "$output_path/index.html"
         printf 'output-path=%s\n' "$output_path" >> "$GITHUB_OUTPUT"
         printf 'index-path=%s/index.html\n' "$output_path" >> "$GITHUB_OUTPUT"
+
+    - name: Estimate RAM, Flash and SPI budgets
+      id: budget
+      shell: bash
+      env:
+        ZDSE_OUTPUT_PATH: ${{ inputs.output-path }}
+        ZDSE_FIRMWARE_MAP: ${{ inputs.firmware-map }}
+        ZDSE_BASELINE_BUDGET: ${{ inputs.baseline-budget-report }}
+        ZDSE_SCREEN_WIDTH: ${{ inputs.screen-width }}
+        ZDSE_SCREEN_HEIGHT: ${{ inputs.screen-height }}
+        ZDSE_TARGET_FPS: ${{ inputs.target-fps }}
+        ZDSE_SPI_MHZ: ${{ inputs.spi-mhz }}
+        ZDSE_DIRTY_PERCENT: ${{ inputs.dirty-percent }}
+        ZDSE_STRIP_PIXELS: ${{ inputs.strip-pixels }}
+        ZDSE_MAX_FLASH: ${{ inputs.max-firmware-flash-bytes }}
+        ZDSE_MAX_RAM: ${{ inputs.max-firmware-ram-bytes }}
+        ZDSE_MAX_SPI_UTILIZATION: ${{ inputs.max-spi-utilization-percent }}
+      run: |
+        set -euo pipefail
+        engine_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        output_path="$(cd "$ZDSE_OUTPUT_PATH" && pwd)"
+        args=(
+          --preview-manifest "$output_path/preview-manifest.json"
+          --output "$output_path/budget-report.json"
+          --markdown "$output_path/budget-summary.md"
+          --width "$ZDSE_SCREEN_WIDTH"
+          --height "$ZDSE_SCREEN_HEIGHT"
+          --fps "$ZDSE_TARGET_FPS"
+          --spi-mhz "$ZDSE_SPI_MHZ"
+          --dirty-percent "$ZDSE_DIRTY_PERCENT"
+          --strip-pixels "$ZDSE_STRIP_PIXELS"
+          --max-flash-bytes "$ZDSE_MAX_FLASH"
+          --max-ram-bytes "$ZDSE_MAX_RAM"
+          --max-spi-utilization-percent "$ZDSE_MAX_SPI_UTILIZATION"
+        )
+        [[ -z "$ZDSE_FIRMWARE_MAP" ]] || args+=(--firmware-map "$ZDSE_FIRMWARE_MAP")
+        [[ -z "$ZDSE_BASELINE_BUDGET" ]] || args+=(--baseline "$ZDSE_BASELINE_BUDGET")
+        python3 "$engine_root/scripts/report_budget.py" "${args[@]}"
+        cat "$output_path/budget-summary.md" >> "$GITHUB_STEP_SUMMARY"
+        printf 'budget-report=%s/budget-report.json\n' "$output_path" >> "$GITHUB_OUTPUT"
+        printf 'budget-summary=%s/budget-summary.md\n' "$output_path" >> "$GITHUB_OUTPUT"

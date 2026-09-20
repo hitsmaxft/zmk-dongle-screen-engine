@@ -21,11 +21,11 @@ config ZMK_DONGLE_SCREEN_BRIGHTNESS
     depends on ZMK_DONGLE_SCREEN_ENGINE
 
 config ZMK_DONGLE_SCREEN_DIRECT_RGB565
-    bool "Send ABI 1.2 RGB565 regions directly through the display driver"
+    bool "Send ABI 1.2+ RGB565 regions directly through the display driver"
     default y
     depends on ZMK_DONGLE_SCREEN_ENGINE
     help
-      Required by Theme ABI 1.2. LVGL retains screen lifecycle ownership while
+      Required by Theme ABI 1.2 and later. LVGL retains screen lifecycle ownership while
       the Engine renders bounded strips directly through the display driver.
 
 config ZMK_DONGLE_SCREEN_STRIP_PIXELS
@@ -65,5 +65,5 @@ config ZMK_DONGLE_SCREEN_PACKED_RECTS
     default y
     depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
     help
-      Compatibility option retained for existing configurations. ABI 1.2
+      Compatibility option retained for existing configurations. ABI 1.2+
       always renders exact dirty rectangles into the bounded strip buffer.

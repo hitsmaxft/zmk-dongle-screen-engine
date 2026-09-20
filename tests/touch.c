@@ -36,7 +36,7 @@ const struct dte_theme dte_selected_theme =
 int main(void) {
   dte_init(280, 240);
   assert(dte_last_status() == DTE_STATUS_OK);
-  assert(dte_active_abi_version() == DTE_ABI_VERSION_V1_2);
+  assert(dte_active_abi_version() == DTE_ABI_VERSION_V1_3);
   dte_touch(180, 120, 1, 0);
   dte_touch(90, 120, 1, 40);
   dte_touch(90, 120, 0, 80);

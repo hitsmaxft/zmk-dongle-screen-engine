@@ -1,4 +1,6 @@
 #include "dongle_raster_assets.h"
+#include "tre_compat.h"
+#include <tre/render.h>
 #include <zmk/dongle_theme/metal_sample.h>
 #include <zmk/dongle_theme/raster.h>
 uint32_t dtr_profile_cycles[3];
@@ -53,6 +55,24 @@ void dtr_end_canvas(void) {
   TW = TH = STRIDE = 0;
 }
 int dtr_is_dry_run(void) { return fb == NULL; }
+int dtr_compat_begin_image(struct tre_surface *surface,
+                           struct tre_render_ctx *ctx) {
+  if (!surface || !ctx || !region_override || !fb)
+    return 0;
+  *surface = (struct tre_surface)TRE_SURFACE_INIT;
+  surface->scene_width = (uint16_t)W;
+  surface->scene_height = (uint16_t)H;
+  surface->origin_x = (int16_t)OX;
+  surface->origin_y = (int16_t)OY;
+  surface->width = (uint16_t)TW;
+  surface->height = (uint16_t)TH;
+  surface->stride_bytes = (uint32_t)STRIDE * 2u;
+  surface->buffer_size = (uint32_t)(TH - 1) * STRIDE * 2u +
+                         (uint32_t)TW * 2u;
+  surface->pixels = (uint8_t *)fb;
+  *ctx = (struct tre_render_ctx)TRE_RENDER_CTX_INIT;
+  return tre_render_begin(ctx, surface) == TRE_OK;
+}
 void dtr_damage_begin(void) {
   if (region_override)
     return;

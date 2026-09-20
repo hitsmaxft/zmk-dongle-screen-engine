@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/actions/build-preview/**'
       - '.github/workflows/preview-action.yml'
+      - 'AGENTS.md'
       - 'examples/minimal-theme/**'
       - 'include/**'
       - 'boards/shields/dongle_screen_host/**'
@@ -18,6 +19,7 @@ on:
     paths:
       - '.github/actions/build-preview/**'
       - '.github/workflows/preview-action.yml'
+      - 'AGENTS.md'
       - 'examples/minimal-theme/**'
       - 'include/**'
       - 'boards/shields/dongle_screen_host/**'
@@ -57,7 +59,10 @@ jobs:
         shell: bash
         env:
           ZDSE_INDEX_PATH: ${{ steps.preview.outputs.index-path }}
-        run: test -s "$ZDSE_INDEX_PATH"
+        run: |
+          test -s "$ZDSE_INDEX_PATH"
+          test -s "${{ steps.preview.outputs.budget-report }}"
+          test -s "${{ steps.preview.outputs.budget-summary }}"
 
       - name: Run C ABI and raster tests
         run: python3 scripts/test_engine.py --lvgl .preview-deps/lvgl

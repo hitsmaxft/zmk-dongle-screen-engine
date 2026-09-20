@@ -10,5 +10,14 @@ if(CONFIG_ZMK_DONGLE_SCREEN_ENGINE)
     COMMAND_ERROR_IS_FATAL ANY)
   zephyr_library_include_directories(${CMAKE_CURRENT_BINARY_DIR})
   zephyr_library_compile_options(-O2 -ffp-contract=off)
-  zephyr_library_sources(src/engine.c src/raster.c src/ui.c src/zmk_host.c)
+  zephyr_library_sources(
+    src/engine.c
+    src/raster.c
+    src/ui.c
+    src/zmk_host.c
+    src/tre/surface.c
+    src/tre/render.c
+    src/tre/image.c
+    src/tre/damage.c
+    src/tre/tile.c)
 endif()
