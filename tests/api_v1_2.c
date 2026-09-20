@@ -107,7 +107,7 @@ int main(void) {
 #if !defined(__ZEPHYR__)
   assert(dte_render(3000) == 1);
   assert(dte_preview_dirty_rects() == 1 && dte_preview_draw_calls() == 1);
-  assert(dte_preview_transfer_bytes() == 16 * 16 * 2);
+  assert(dte_preview_transfer_bytes() == 4 * 3 * 2);
   assert(dte_render(3250) == 1);
   assert(dte_preview_draw_calls() == 1 && dte_preview_transfer_bytes() == 0);
 #endif

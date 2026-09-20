@@ -403,8 +403,11 @@ int dte_render(uint32_t now) {
       }
       if(coherent){preview_transfer_bytes+=(uint32_t)r->width*h*2u;continue;}
       struct dte_dirty_rect sent;
-      while(dte_next_dirty_rect(changed,width,height,&sent))
-        preview_transfer_bytes+=(uint32_t)sent.width*sent.height*2u;
+      while(dte_next_dirty_rect(changed,width,height,&sent)){
+        struct dte_dirty_rect strip={r->x,y,r->width,h},clipped;
+        if(dte_intersect_dirty_rect(&sent,&strip,&clipped))
+          preview_transfer_bytes+=(uint32_t)clipped.width*clipped.height*2u;
+      }
     }
   }
   preview_force=0;

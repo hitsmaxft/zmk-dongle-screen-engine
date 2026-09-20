@@ -3,6 +3,18 @@
 #include <string.h>
 #include <zmk/dongle_theme/transport.h>
 int main(void) {
+  struct dte_dirty_rect tile={128,64,16,16},layer={0,64,137,75},clipped;
+  assert(dte_intersect_dirty_rect(&tile,&layer,&clipped));
+  assert(clipped.x==128&&clipped.y==64&&clipped.width==9&&clipped.height==16);
+  struct dte_dirty_rect modifiers={137,64,143,75};
+  assert(dte_intersect_dirty_rect(&tile,&modifiers,&clipped));
+  assert(clipped.x==137&&clipped.y==64&&clipped.width==7&&clipped.height==16);
+  struct dte_dirty_rect lower_tile={80,208,16,16},left={0,139,93,101};
+  assert(dte_intersect_dirty_rect(&lower_tile,&left,&clipped));
+  assert(clipped.x==80&&clipped.y==208&&clipped.width==13&&clipped.height==16);
+  struct dte_dirty_rect disjoint={144,64,16,16};
+  assert(!dte_intersect_dirty_rect(&disjoint,&layer,&clipped));
+
   for(int h=240;h<=280;h+=40) {
     bool rows[18]={0};for(int i=0;i<(h+15)/16;i++)rows[i]=true;
     int cursor=0,y,n,expected=0;

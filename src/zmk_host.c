@@ -173,9 +173,14 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
 static uint32_t hash_tile(const uint16_t *pixels,int stride,int base_x,int base_y,
                           int tile_x,int tile_y,int width,int height){
   uint32_t hash=2166136261u;
-  int w=MIN(16,width-tile_x),h=MIN(16,height-tile_y);
-  for(int y=0;y<h;y++)for(int x=0;x<w;x++)
-    hash=(hash^pixels[(tile_y-base_y+y)*stride+tile_x-base_x+x])*16777619u;
+  int left=MAX(tile_x,base_x),top=MAX(tile_y,base_y);
+  int right=MIN(tile_x+16,base_x+width),bottom=MIN(tile_y+16,base_y+height);
+  hash=(hash^(uint32_t)left)*16777619u;
+  hash=(hash^(uint32_t)top)*16777619u;
+  hash=(hash^(uint32_t)right)*16777619u;
+  hash=(hash^(uint32_t)bottom)*16777619u;
+  for(int y=top;y<bottom;y++)for(int x=left;x<right;x++)
+    hash=(hash^pixels[(y-base_y)*stride+x-base_x])*16777619u;
   return hash;
 }
 
@@ -237,7 +242,7 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
       int ty0=y/16,ty1=(y+h-1)/16;
       for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++){
         uint32_t hash=hash_tile(transfer_pixels,rect->width,rect->x,y,
-                                tx*16,ty*16,dte_width(),dte_height());
+                                tx*16,ty*16,rect->width,h);
         int index=ty*18+tx;
         if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         tile_hash[index]=hash;
@@ -257,18 +262,21 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
       }
       struct dte_dirty_rect changed_rect;
       while(dte_next_dirty_rect(changed,dte_width(),dte_height(),&changed_rect)){
-        int sx=changed_rect.x-rect->x,sy=changed_rect.y-y,n=0;
-        for(int yy=0;yy<changed_rect.height;yy++)for(int xx=0;xx<changed_rect.width;xx++)
-          packed_pixels[n++]=transfer_pixels[(sy+yy)*rect->width+sx+xx];
+        struct dte_dirty_rect strip={rect->x,y,rect->width,h},sent;
+        if(!dte_intersect_dirty_rect(&changed_rect,&strip,&sent))continue;
+        int sx=sent.x-rect->x,sy=sent.y-y,n=sent.width*sent.height;
         if(n>(int)(sizeof(packed_pixels)/sizeof(packed_pixels[0]))){
           transfer_failed=true;LOG_ERR("packed rectangle exceeds scratch");break;
         }
+        n=0;
+        for(int yy=0;yy<sent.height;yy++)for(int xx=0;xx<sent.width;xx++)
+          packed_pixels[n++]=transfer_pixels[(sy+yy)*rect->width+sx+xx];
         if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
           packed_pixels[i]=__builtin_bswap16(packed_pixels[i]);
-        struct display_buffer_descriptor desc={.width=changed_rect.width,.height=changed_rect.height,
-          .pitch=changed_rect.width,.buf_size=(size_t)n*2u};
+        struct display_buffer_descriptor desc={.width=sent.width,.height=sent.height,
+          .pitch=sent.width,.buf_size=(size_t)n*2u};
         uint32_t write_started=k_cycle_get_32();
-        int rc=display_write(disp,changed_rect.x,changed_rect.y,&desc,packed_pixels);
+        int rc=display_write(disp,sent.x,sent.y,&desc,packed_pixels);
         display_us+=k_cyc_to_us_floor32(k_cycle_get_32()-write_started);
         display_count++;present_writes++;present_bytes+=(uint32_t)n*2u;
         if(rc){transfer_failed=true;LOG_ERR("display strip failed: %d",rc);break;}

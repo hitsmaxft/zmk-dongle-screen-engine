@@ -4,6 +4,27 @@
 #include <stdint.h>
 struct dte_dirty_rect {int x,y,width,height;};
 
+/* Clip a tile/packet rectangle to the pixels actually present in a render
+ * strip.  Region edges need not be 16px aligned. */
+static inline bool dte_intersect_dirty_rect(const struct dte_dirty_rect *a,
+                                            const struct dte_dirty_rect *b,
+                                            struct dte_dirty_rect *out) {
+  if (!a || !b || !out)
+    return false;
+  int left = a->x > b->x ? a->x : b->x;
+  int top = a->y > b->y ? a->y : b->y;
+  int right = a->x + a->width < b->x + b->width
+                  ? a->x + a->width
+                  : b->x + b->width;
+  int bottom = a->y + a->height < b->y + b->height
+                   ? a->y + a->height
+                   : b->y + b->height;
+  if (right <= left || bottom <= top)
+    return false;
+  *out = (struct dte_dirty_rect){left, top, right - left, bottom - top};
+  return true;
+}
+
 /* Convert 16px damage rows into at most capacity scene rectangles. Unlike the
  * legacy packet iterator below, rectangles are not constrained by a transport
  * scratch size: the ABI 1.3 host subdivides them into strips later. If the
