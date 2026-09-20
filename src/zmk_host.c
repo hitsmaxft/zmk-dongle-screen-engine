@@ -262,21 +262,21 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
       }
       struct dte_dirty_rect changed_rect;
       while(dte_next_dirty_rect(changed,dte_width(),dte_height(),&changed_rect)){
-        struct dte_dirty_rect strip={rect->x,y,rect->width,h},sent;
-        if(!dte_intersect_dirty_rect(&changed_rect,&strip,&sent))continue;
-        int sx=sent.x-rect->x,sy=sent.y-y,n=sent.width*sent.height;
+        struct dte_dirty_rect strip={rect->x,y,rect->width,h},packet;
+        if(!dte_intersect_dirty_rect(&changed_rect,&strip,&packet))continue;
+        int sx=packet.x-rect->x,sy=packet.y-y,n=packet.width*packet.height;
         if(n>(int)(sizeof(packed_pixels)/sizeof(packed_pixels[0]))){
           transfer_failed=true;LOG_ERR("packed rectangle exceeds scratch");break;
         }
         n=0;
-        for(int yy=0;yy<sent.height;yy++)for(int xx=0;xx<sent.width;xx++)
+        for(int yy=0;yy<packet.height;yy++)for(int xx=0;xx<packet.width;xx++)
           packed_pixels[n++]=transfer_pixels[(sy+yy)*rect->width+sx+xx];
         if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
           packed_pixels[i]=__builtin_bswap16(packed_pixels[i]);
-        struct display_buffer_descriptor desc={.width=sent.width,.height=sent.height,
-          .pitch=sent.width,.buf_size=(size_t)n*2u};
+        struct display_buffer_descriptor desc={.width=packet.width,.height=packet.height,
+          .pitch=packet.width,.buf_size=(size_t)n*2u};
         uint32_t write_started=k_cycle_get_32();
-        int rc=display_write(disp,sent.x,sent.y,&desc,packed_pixels);
+        int rc=display_write(disp,packet.x,packet.y,&desc,packed_pixels);
         display_us+=k_cyc_to_us_floor32(k_cycle_get_32()-write_started);
         display_count++;present_writes++;present_bytes+=(uint32_t)n*2u;
         if(rc){transfer_failed=true;LOG_ERR("display strip failed: %d",rc);break;}
