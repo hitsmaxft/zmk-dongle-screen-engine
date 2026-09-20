@@ -1,0 +1,8 @@
+[workspace]
+members = ["zdse-pack"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+rust-version = "1.75"

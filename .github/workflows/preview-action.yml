@@ -14,7 +14,7 @@ on:
       - 'tests/**'
       - 'web/**'
   push:
-    branches: [main]
+    branches: [main, preview/v2.0]
     paths:
       - '.github/actions/build-preview/**'
       - '.github/workflows/preview-action.yml'
@@ -32,6 +32,36 @@ permissions:
   contents: read
 
 jobs:
+  v2-pack-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out Engine
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate the allocation-free Format 1 envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_zds_fixtures.py
+          git diff --exit-code -- tests/fixtures/zds-format1
+          cc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -Iinclude src/v2/pack.c tests/pack_v2.c \
+            -o /tmp/zdse-pack-v2-test
+          /tmp/zdse-pack-v2-test
+
+      - name: Validate Format 1 with the independent Rust reader
+        env:
+          CARGO_INCREMENTAL: "0"
+          CARGO_TARGET_DIR: ${{ runner.temp }}/zdse-cargo-target
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path rust/Cargo.toml --locked
+          /tmp/zdse-pack-v2-test --corpus-report > /tmp/zdse-c-report.tsv
+          cargo run --manifest-path rust/Cargo.toml --locked \
+            -p zdse-pack --example corpus_report --quiet \
+            > /tmp/zdse-rust-report.tsv
+          diff -u /tmp/zdse-c-report.tsv /tmp/zdse-rust-report.tsv
+
   minimal-theme:
     runs-on: ubuntu-24.04
     steps:

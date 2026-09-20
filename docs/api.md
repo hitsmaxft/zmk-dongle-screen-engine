@@ -13,6 +13,19 @@ fixed-width `int32_t` alias `dte_result_t`; C enums are constants only. The Engi
 writes only that required prefix and ignores a compatible caller tail. A wrong
 ABI is rejected; it is never silently downgraded.
 
+The `preview/v2.0` branch additionally contains the opt-in, experimental `.zds`
+Format 1 envelope validator and ABI 2.x declarations under
+`zmk/dongle_theme/v2/`. They do not replace the published Theme ABI and are
+excluded unless `CONFIG_ZMK_DONGLE_SCREEN_ENGINE_V2_PREVIEW=y`. The frozen byte
+envelope and validation bounds are documented in
+[zds-format-1.md](zds-format-1.md); scene/runtime records remain preview work,
+not a released 2.0 claim.
+
+The v2 pack/runtime version domain is independent from the published Engine
+1.2 Theme ABI. Until the declarative Runtime integration is complete, ABI 1.2
+remains the host transport boundary and its region-rendering contract remains
+authoritative.
+
 ## Theme descriptor
 
 Include `zmk/dongle_theme/theme.h` and define one descriptor:

@@ -3,6 +3,15 @@ config ZMK_DONGLE_SCREEN_ENGINE
     default y if SHIELD_DONGLE_SCREEN_HOST
     select ZMK_DONGLE_SCREEN_DIRECT_RGB565
 
+config ZMK_DONGLE_SCREEN_ENGINE_V2_PREVIEW
+    bool "Build the experimental ZDSE 2.0 pack validator"
+    default n
+    depends on ZMK_DONGLE_SCREEN_ENGINE
+    help
+      Add the allocation-free .zds Format 1 reader and versioned ABI 2.x
+      declarations. This preview option does not replace the v1 or ABI 1.1
+      Theme selection path.
+
 config ZMK_DONGLE_SCREEN_FPS
     int "Theme animation deadline frequency (not a guaranteed physical refresh rate)"
     default 60
