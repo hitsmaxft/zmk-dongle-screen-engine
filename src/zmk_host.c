@@ -47,10 +47,14 @@ static int backlight_percent = CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS;
 static int startup_phase;
 static unsigned startup_attempts;
 static uint32_t deadline, last_report, frames;
+#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER)
+static uint16_t full_pixels[DTE_MAX_PIXELS] __aligned(4);
+#else
 static uint16_t
     transfer_pixels[CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS] __aligned(4);
 static uint16_t packed_pixels[2048] __aligned(4);
 static uint32_t tile_hash[18 * 18];
+#endif
 static void frame_work_cb(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(frame_work, frame_work_cb);
 static void set_backlight(int percent) {
@@ -115,6 +119,43 @@ static void direct_lvgl_flush(lv_display_t *display, const lv_area_t *area,
   LOG_WRN("suppressed LVGL flush while direct renderer owns the panel");
   lv_display_flush_ready(display);
 }
+#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER)
+static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
+  if(!transfer_failed&&!frame->dirty_count&&
+     !(frame->flags&DTE_RENDER_FRAME_CHANGED))return false;
+  const struct device *disp=DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+  struct dte_canvas target=DTE_CANVAS_INIT;
+  target.scene_width=dte_width();target.scene_height=dte_height();
+  target.width=dte_width();target.height=dte_height();target.stride_pixels=dte_width();
+  target.buffer_size=(uint32_t)dte_width()*dte_height()*2u;target.pixels=full_pixels;
+  transfer_failed=false;
+  uint32_t draw_started=k_cycle_get_32();
+  dte_result_t status=dte_draw(now,&target);
+  uint32_t draw_elapsed=k_cyc_to_us_floor32(k_cycle_get_32()-draw_started);
+  region_us+=draw_elapsed;region_count++;
+  if(draw_elapsed>region_max_us)region_max_us=draw_elapsed;
+  if(status!=DTE_STATUS_OK){transfer_failed=true;LOG_ERR("theme full render failed");return false;}
+  int rows=CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS/dte_width();
+  if(rows>64)rows=64;
+  if(rows<1){transfer_failed=true;LOG_ERR("full frame band too small");return false;}
+  bool sent=false;
+  for(int y=0;y<dte_height();y+=rows){
+    int h=MIN(rows,dte_height()-y),n=dte_width()*h;
+    if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
+      full_pixels[y*dte_width()+i]=__builtin_bswap16(full_pixels[y*dte_width()+i]);
+    struct display_buffer_descriptor desc={.width=dte_width(),.height=h,.pitch=dte_width(),.buf_size=(size_t)n*2u};
+    uint32_t write_started=k_cycle_get_32();
+    int rc=display_write(disp,0,y,&desc,&full_pixels[y*dte_width()]);
+    display_us+=k_cyc_to_us_floor32(k_cycle_get_32()-write_started);
+    display_count++;present_writes++;present_bytes+=(uint32_t)n*2u;
+    if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
+      full_pixels[y*dte_width()+i]=__builtin_bswap16(full_pixels[y*dte_width()+i]);
+    if(rc){transfer_failed=true;LOG_ERR("display full band failed: %d",rc);break;}
+    sent=true;
+  }
+  return sent&&!transfer_failed;
+}
+#else
 /* ABI 1.2+ renders final pixels directly into a bounded strip. The display
  * driver owns each synchronous buffer only until display_write() returns. */
 static uint32_t hash_tile(const uint16_t *pixels,int stride,int base_x,int base_y,
@@ -228,6 +269,7 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   }
   return sent && !transfer_failed;
 }
+#endif
 static void frame_work_cb(struct k_work *work) {
   ARG_UNUSED(work);
   if (!canvas || !startup_ready || asleep || touch_release_pending)

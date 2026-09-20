@@ -28,6 +28,16 @@ config ZMK_DONGLE_SCREEN_DIRECT_RGB565
       Required by Theme ABI 1.2 and later. LVGL retains screen lifecycle ownership while
       the Engine renders bounded strips directly through the display driver.
 
+config ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER
+    bool "Compose and present a full RGB565 framebuffer"
+    default n
+    depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
+    help
+      Retain one 280x240 RGB565 frame for themes whose large moving geometry
+      needs coherent presentation. The host draws the full scene once, then
+      sends ordered row bands from that same frame. This uses 134400 bytes RAM
+      instead of the default bounded-region renderer.
+
 config ZMK_DONGLE_SCREEN_STRIP_PIXELS
     int "Maximum RGB565 pixels in the firmware render strip"
     default 4480
