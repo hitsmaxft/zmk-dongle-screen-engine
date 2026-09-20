@@ -49,6 +49,10 @@ conservative dirty region; discrete state updates retain tile-hash packing.
 This keeps one animation frame spatially coherent on displays without TE while
 still minimizing SPI traffic for layers, batteries and WPM.
 
+For displays that cannot sustain the requested rate, Full Framebuffer mode can
+advance logical animation only after a successful presentation. It is opt-in
+outside that mode and trades transition duration for complete visible steps.
+
 ### TRE reusable render core
 
 ABI 1.3 extracts TRE (Tiled Render Engine) beneath the Theme API. TRE provides

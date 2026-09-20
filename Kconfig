@@ -38,6 +38,16 @@ config ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER
       sends ordered row bands from that same frame. This uses 134400 bytes RAM
       instead of the default bounded-region renderer.
 
+config ZMK_DONGLE_SCREEN_SYNC_ANIMATION
+    bool "Advance animation only after a presented frame"
+    default y if ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER
+    default n
+    depends on ZMK_DONGLE_SCREEN_ENGINE
+    help
+      Keep logical animation time in step with successful display frames.
+      Slow hardware preserves every intermediate animation step instead of
+      skipping to wall-clock time; wall-clock duration consequently stretches.
+
 config ZMK_DONGLE_SCREEN_STRIP_PIXELS
     int "Maximum RGB565 pixels in the firmware render strip"
     default 4480
