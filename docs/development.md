@@ -77,6 +77,11 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 `frame → rect → strip → draw`，并显示 ABI 脏矩形、strip draw 次数及经 tile hash
 过滤后的实际 payload；必须在此路径达标后，再按性能需要把 `frame` 与 `draw`
 拆成原生区域实现。
+
+连续动画与离散状态采用不同提交策略：前者将本帧 dirty bounds 合并为连续区域，
+按自上而下 strip 顺序发送，避免 tile hash 把一帧拆成棋盘状的不同时刻；后者继续
+使用 tile hash 节省 SPI。无 TE/vsync 的面板仍可能出现单一扫描缝，故不得宣称
+此策略等同硬件换帧。
 固件不得自行保存完整 RGB565 framebuffer；预览全帧仅供取图、hash 与比对。
 
 ## GitHub Actions preview

@@ -360,6 +360,18 @@ int dte_render(uint32_t now) {
   if (dte_frame(now, &result) != DTE_STATUS_OK)
     return 0;
 #if !defined(__ZEPHYR__)
+  int coherent=(result.flags&DTE_RENDER_CONTINUOUS)!=0;
+  if(coherent&&result.dirty_count>1){
+    int left=width,top=height,right=0,bottom=0;
+    for(unsigned i=0;i<result.dirty_count;i++){
+      const struct dte_rect *r=&result.dirty[i];
+      if(r->x<left)left=r->x;if(r->y<top)top=r->y;
+      if(r->x+r->width>right)right=r->x+r->width;
+      if(r->y+r->height>bottom)bottom=r->y+r->height;
+    }
+    result.dirty_count=1;
+    result.dirty[0]=(struct dte_rect){left,top,right-left,bottom-top};
+  }
   uint32_t changed[18];
   preview_transfer_bytes=preview_draw_calls=0;
   preview_dirty_rects=result.dirty_count;
@@ -389,6 +401,7 @@ int dte_render(uint32_t now) {
         if(preview_force||preview_tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         preview_tile_hash[index]=hash;
       }
+      if(coherent){preview_transfer_bytes+=(uint32_t)r->width*h*2u;continue;}
       struct dte_dirty_rect sent;
       while(dte_next_dirty_rect(changed,width,height,&sent))
         preview_transfer_bytes+=(uint32_t)sent.width*sent.height*2u;

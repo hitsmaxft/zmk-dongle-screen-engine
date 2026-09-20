@@ -159,6 +159,14 @@ model while avoiding an SPI full-frame transfer merely because a Theme supplied
 a conservative damage bound. A failed write invalidates the optimization and
 forces the next presentation to cover the full scene.
 
+Presentation policy follows frame semantics. Non-continuous state updates use
+tile-hash packing to minimize payload. `DTE_RENDER_CONTINUOUS` animation frames
+merge their dirty rectangles into one conservative scene region and submit its
+strips in top-to-bottom order. This avoids exposing a single animation frame as
+temporally scattered tile writes on panels without a TE/vsync signal. Themes
+still need realistic damage bounds; this policy improves coherence but cannot
+make an SPI update atomic.
+
 `dte_render()` and preview-only `dte_pixels()`/`dte_hash()` assemble the same
 regions into a full buffer for native/WASM tools. They are not firmware storage
 contracts.

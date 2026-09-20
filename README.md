@@ -44,6 +44,11 @@ payload. It reports ABI rectangles and strip draws alongside bytes, so a
 compatibility adapter or a conservative damage declaration cannot appear faster
 in WASM than it will on the device.
 
+Continuous animation is presented as ordered top-to-bottom strips over one
+conservative dirty region; discrete state updates retain tile-hash packing.
+This keeps one animation frame spatially coherent on displays without TE while
+still minimizing SPI traffic for layers, batteries and WPM.
+
 ### TRE reusable render core
 
 ABI 1.3 extracts TRE (Tiled Render Engine) beneath the Theme API. TRE provides

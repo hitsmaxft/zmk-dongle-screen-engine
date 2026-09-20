@@ -130,10 +130,22 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
   bool sent = false;
   bool force=transfer_failed;
+  bool coherent=(frame->flags&DTE_RENDER_CONTINUOUS)!=0;
   if (transfer_failed) {
     frame->flags |= DTE_RENDER_FRAME_CHANGED;
     frame->dirty_count = 1;
     frame->dirty[0] = (struct dte_rect){0, 0, dte_width(), dte_height()};
+  }
+  if(coherent&&frame->dirty_count>1){
+    int left=dte_width(),top=dte_height(),right=0,bottom=0;
+    for(unsigned i=0;i<frame->dirty_count;i++){
+      const struct dte_rect *r=&frame->dirty[i];
+      if(r->x<left)left=r->x;if(r->y<top)top=r->y;
+      if(r->x+r->width>right)right=r->x+r->width;
+      if(r->y+r->height>bottom)bottom=r->y+r->height;
+    }
+    frame->dirty_count=1;
+    frame->dirty[0]=(struct dte_rect){left,top,right-left,bottom-top};
   }
   transfer_failed = false;
   for (unsigned i = 0; i < frame->dirty_count; i++) {
@@ -176,6 +188,19 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
         int index=ty*18+tx;
         if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         tile_hash[index]=hash;
+      }
+      if(coherent){
+        int n=rect->width*h;
+        if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int p=0;p<n;p++)
+          transfer_pixels[p]=__builtin_bswap16(transfer_pixels[p]);
+        struct display_buffer_descriptor desc={.width=rect->width,.height=h,
+          .pitch=rect->width,.buf_size=(size_t)n*2u};
+        uint32_t write_started=k_cycle_get_32();
+        int rc=display_write(disp,rect->x,y,&desc,transfer_pixels);
+        display_us+=k_cyc_to_us_floor32(k_cycle_get_32()-write_started);
+        display_count++;present_writes++;present_bytes+=(uint32_t)n*2u;
+        if(rc){transfer_failed=true;LOG_ERR("display strip failed: %d",rc);break;}
+        sent=true;continue;
       }
       struct dte_dirty_rect changed_rect;
       while(dte_next_dirty_rect(changed,dte_width(),dte_height(),&changed_rect)){
@@ -266,10 +291,15 @@ static void frame_work_cb(struct k_work *work) {
     last_report = now;
   }
   if (active) {
-    deadline = (frame.flags & DTE_RENDER_DEADLINE_VALID)
-                   ? frame.next_frame_at_ms
-                   : ((uint64_t)now * CONFIG_ZMK_DONGLE_SCREEN_FPS / 1000 + 1) *
-                         1000 / CONFIG_ZMK_DONGLE_SCREEN_FPS;
+    uint32_t schedule_now=k_uptime_get_32();
+    deadline=(frame.flags&DTE_RENDER_DEADLINE_VALID)?frame.next_frame_at_ms:0;
+    /* A slow frame must not trigger an immediate catch-up loop. Skip every
+     * expired deadline and leave the display queue idle until the next grid;
+     * state events can then reschedule the work immediately. */
+    uint32_t grid_deadline=
+      ((uint64_t)schedule_now*CONFIG_ZMK_DONGLE_SCREEN_FPS/1000+1)*
+      1000/CONFIG_ZMK_DONGLE_SCREEN_FPS;
+    if(!deadline||(int32_t)(deadline-schedule_now)<=0)deadline=grid_deadline;
     k_work_reschedule_for_queue(
         zmk_display_work_q(), &frame_work,
         K_MSEC(MAX(1, (int32_t)(deadline - k_uptime_get_32()))));
