@@ -191,12 +191,6 @@ no geometric resampling. A preview filter change invalidates the complete
 scene, while an unchanged filtered frame remains eligible for zero-byte tile
 hash presentation.
 
-`ZMK_DONGLE_SCREEN_SYNC_ANIMATION` changes only the host animation clock: it
-advances one logical `1 / CONFIG_ZMK_DONGLE_SCREEN_FPS` step after each
-successful presentation rather than following wall clock. Full-frame mode
-enables it by default, so constrained hardware preserves intermediate frames
-at the cost of a longer wall-clock transition.
-
 `dte_render()` and preview-only `dte_pixels()`/`dte_hash()` assemble the same
 regions into a full buffer for native/WASM tools. They are not firmware storage
 contracts.

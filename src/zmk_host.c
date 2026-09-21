@@ -40,7 +40,6 @@ static uint32_t region_us,region_max_us,region_count;
 static uint32_t display_us,display_count,present_bytes,present_writes;
 static bool animation_open;
 static uint32_t animation_last, animation_us, animation_intervals;
-static uint32_t sync_now,sync_fraction;
 static uint32_t last_presented, stats_deadline;
 static int measured_fps_x10 = -1, published_fps_x10 = -1;
 static bool transfer_failed;
@@ -60,17 +59,6 @@ static uint16_t packed_pixels[2048] __aligned(4);
 static uint32_t tile_hash[18 * 18];
 static void frame_work_cb(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(frame_work, frame_work_cb);
-static uint32_t animation_time(uint32_t wall_now){
-  return IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_SYNC_ANIMATION)&&animation_open?
-         sync_now:wall_now;
-}
-static void advance_animation_time(uint32_t rendered_now,bool active,bool presented){
-  if(!IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_SYNC_ANIMATION)||!active||!presented)return;
-  if(!animation_open){sync_now=rendered_now;sync_fraction=0;}
-  sync_fraction+=1000;
-  sync_now+=sync_fraction/CONFIG_ZMK_DONGLE_SCREEN_FPS;
-  sync_fraction%=CONFIG_ZMK_DONGLE_SCREEN_FPS;
-}
 static void set_backlight(int percent) {
 #if DT_NODE_EXISTS(DT_NODELABEL(disp_bl))
   const struct device *led = DEVICE_DT_GET(DT_PARENT(DT_NODELABEL(disp_bl)));
@@ -297,8 +285,7 @@ static void frame_work_cb(struct k_work *work) {
   ARG_UNUSED(work);
   if (!canvas || !startup_ready || asleep || touch_release_pending)
     return;
-  uint32_t wall_now = k_uptime_get_32();
-  uint32_t now=animation_time(wall_now);
+  uint32_t now = k_uptime_get_32();
   struct zmk_endpoint_instance ep = zmk_endpoint_get_selected();
   int layer = zmk_keymap_highest_layer_active();
   k_spinlock_key_t key = k_spin_lock(&state_lock);
@@ -306,9 +293,9 @@ static void frame_work_cb(struct k_work *work) {
   k_spin_unlock(&state_lock, key);
   dte_set_state(sw, layer, ep.transport, zmk_ble_active_profile_index(), sm, sl,
                 sr, sd, -1, -1);
-  if ((int32_t)(wall_now - stats_deadline) >= 0) {
+  if ((int32_t)(now - stats_deadline) >= 0) {
     published_fps_x10 = measured_fps_x10;
-    stats_deadline = wall_now + 500;
+    stats_deadline = now + 500;
   }
   dte_set_display_stats(backlight_percent, published_fps_x10);
   dte_set_startup_phase(startup_phase);
@@ -325,7 +312,6 @@ static void frame_work_cb(struct k_work *work) {
   plan_max_us = MAX(plan_max_us, cost);
   plan_count++;
   bool presented = frame_status == DTE_STATUS_OK && present_frame(now, &frame);
-  advance_animation_time(now,active,presented);
   reveal_startup();
   if (!startup_visible && transfer_failed && ++startup_attempts < 3)
     k_work_reschedule_for_queue(zmk_display_work_q(), &frame_work, K_MSEC(50));
@@ -351,17 +337,13 @@ static void frame_work_cb(struct k_work *work) {
   animation_open = active;
   animation_last = completed;
   frames++;
-  if (wall_now - last_report >= 5000) {
+  if (now - last_report >= 5000) {
     LOG_DBG("rendered %u frames in %u ms (transport refresh is separate)",
-            frames, wall_now - last_report);
+            frames, now - last_report);
     frames = 0;
-    last_report = wall_now;
+    last_report = now;
   }
   if (active) {
-    if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_SYNC_ANIMATION)){
-      k_work_reschedule_for_queue(zmk_display_work_q(),&frame_work,K_MSEC(1));
-      return;
-    }
     uint32_t schedule_now=k_uptime_get_32();
     deadline=(frame.flags&DTE_RENDER_DEADLINE_VALID)?frame.next_frame_at_ms:0;
     /* A slow frame must not trigger an immediate catch-up loop. Skip every
@@ -458,7 +440,7 @@ static void finish_release(void) {
     return;
   dte_touch_at(CLAMP(release_sample.y, 0, 279),
                239 - CLAMP(release_sample.x, 0, 239), 0,
-               release_sample.timestamp, animation_time(k_uptime_get_32()));
+               release_sample.timestamp, k_uptime_get_32());
   held = touch_release_pending = false;
 }
 static void release_cb(struct k_work *work) {
@@ -493,7 +475,7 @@ static void touch_work_cb(struct k_work *work) {
   while (k_msgq_get(&touch_samples, &sample, K_NO_WAIT) == 0) {
     if (sample.kind) {
       if ((held || touch_release_pending) &&
-          dte_touch_hint(sample.kind, animation_time(k_uptime_get_32()))) {
+          dte_touch_hint(sample.kind, k_uptime_get_32())) {
         touch_hints++;
         changed = true;
         LOG_INF("touch gesture=%d", sample.kind);
@@ -517,8 +499,8 @@ static void touch_work_cb(struct k_work *work) {
       k_work_cancel_delayable(&release_work);
     }
     /* Sensor portrait 240x280 -> mdac 0x60 landscape 280x240. */
-    dte_touch_at(CLAMP(sample.y,0,279),239-CLAMP(sample.x,0,239),sample.down,
-                 sample.timestamp,animation_time(k_uptime_get_32()));
+    dte_touch(CLAMP(sample.y, 0, 279), 239 - CLAMP(sample.x, 0, 239),
+              sample.down, sample.timestamp);
     if (sample.down && !held) {
       touch_contacts++;
       LOG_INF("touch down raw=%d,%d", sample.x, sample.y);

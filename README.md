@@ -49,9 +49,6 @@ conservative dirty region; discrete state updates retain tile-hash packing.
 This keeps one animation frame spatially coherent on displays without TE while
 still minimizing SPI traffic for layers, batteries and WPM.
 
-For displays that cannot sustain the requested rate, Full Framebuffer mode can
-advance logical animation only after a successful presentation. It is opt-in
-outside that mode and trades transition duration for complete visible steps.
 The Theme still draws one complete frame, but the host hashes 16x16 tiles and
 submits only changed packed rectangles. Its static render storage is 139,792
 bytes: 134,400 bytes of RGB565 pixels, 4,096 bytes of transfer scratch and

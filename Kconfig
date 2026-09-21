@@ -38,16 +38,6 @@ config ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER
       changed packed rectangles. This uses 139792 bytes RAM: 134400 bytes for
       pixels, 4096 bytes for transfer scratch and 1296 bytes for tile hashes.
 
-config ZMK_DONGLE_SCREEN_SYNC_ANIMATION
-    bool "Advance animation only after a presented frame"
-    default y if ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER
-    default n
-    depends on ZMK_DONGLE_SCREEN_ENGINE
-    help
-      Keep logical animation time in step with successful display frames.
-      Slow hardware preserves every intermediate animation step instead of
-      skipping to wall-clock time; wall-clock duration consequently stretches.
-
 config ZMK_DONGLE_SCREEN_FILTER_CRT
     bool "Apply the lightweight CRT glass filter"
     default n
