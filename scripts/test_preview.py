@@ -72,6 +72,7 @@ def verify(output,api_only=False):
         calls += [['dte_touch',[100,100,1,2400]],['dte_render',[2999]],['dte_render',[3000]],['dte_touch',[100,100,0,3010]],['dte_render',[3600]]]
         calls += [['dte_touch',[150,100,1,3700]],['dte_touch',[100,100,1,3750]],['dte_touch',[80,100,0,3800]],['dte_render',[4400]]]
         calls += [['dte_set_battery_count',[2]],['dte_gesture',[3,4500]],['dte_render',[5100]],['dte_set_battery_count',[3]],['dte_render',[5200]]]
+        calls += [['dte_preview_set_filter',[1]],['dte_render',[5300]],['dte_render',[5400]],['dte_preview_set_filter',[0]],['dte_render',[5500]]]
     expected=[]
     for name,args in calls:
         getattr(api,name)(*args)

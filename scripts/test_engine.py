@@ -26,8 +26,9 @@ def main(lvgl: Path) -> None:
     suites = {
         "tre-core": ["tests/tre_core.c", *tre],
         "tre-compat": ["tests/tre_compat.c", "src/raster.c", "src/ui.c", *tre],
-        "api-v1-3": ["tests/api_v1_2.c", "src/engine.c", "src/raster.c", "src/ui.c", *tre],
-        "touch": ["tests/touch.c", "src/engine.c", "src/raster.c", "src/ui.c", *tre],
+        "api-v1-3": ["tests/api_v1_2.c", "src/engine.c", "src/filter.c", "src/raster.c", "src/ui.c", *tre],
+        "touch": ["tests/touch.c", "src/engine.c", "src/filter.c", "src/raster.c", "src/ui.c", *tre],
+        "filter": ["tests/filter.c", "src/filter.c"],
         "density": ["tests/density.c", "src/raster.c", *tre],
         "transport": ["tests/transport.c"],
     }

@@ -12,6 +12,7 @@ if(CONFIG_ZMK_DONGLE_SCREEN_ENGINE)
   zephyr_library_compile_options(-O2 -ffp-contract=off)
   zephyr_library_sources(
     src/engine.c
+    src/filter.c
     src/raster.c
     src/ui.c
     src/zmk_host.c

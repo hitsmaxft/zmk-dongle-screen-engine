@@ -10,6 +10,7 @@
 #include <zmk/ble.h>
 #include <zmk/display.h>
 #include <zmk/dongle_theme/raster.h>
+#include <zmk/dongle_theme/filter.h>
 #include <zmk/dongle_theme/theme.h>
 #include <zmk/dongle_theme/transport.h>
 #include <zmk/endpoints.h>
@@ -39,7 +40,6 @@ static uint32_t region_us,region_max_us,region_count;
 static uint32_t display_us,display_count,present_bytes,present_writes;
 static bool animation_open;
 static uint32_t animation_last, animation_us, animation_intervals;
-static uint32_t sync_now,sync_fraction;
 static uint32_t last_presented, stats_deadline;
 static int measured_fps_x10 = -1, published_fps_x10 = -1;
 static bool transfer_failed;
@@ -50,25 +50,15 @@ static unsigned startup_attempts;
 static uint32_t deadline, last_report, frames;
 #if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER)
 static uint16_t full_pixels[DTE_MAX_PIXELS] __aligned(4);
+static bool full_hash_valid;
 #else
 static uint16_t
     transfer_pixels[CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS] __aligned(4);
+#endif
 static uint16_t packed_pixels[2048] __aligned(4);
 static uint32_t tile_hash[18 * 18];
-#endif
 static void frame_work_cb(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(frame_work, frame_work_cb);
-static uint32_t animation_time(uint32_t wall_now){
-  return IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_SYNC_ANIMATION)&&animation_open?
-         sync_now:wall_now;
-}
-static void advance_animation_time(uint32_t rendered_now,bool active,bool presented){
-  if(!IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_SYNC_ANIMATION)||!active||!presented)return;
-  if(!animation_open){sync_now=rendered_now;sync_fraction=0;}
-  sync_fraction+=1000;
-  sync_now+=sync_fraction/CONFIG_ZMK_DONGLE_SCREEN_FPS;
-  sync_fraction%=CONFIG_ZMK_DONGLE_SCREEN_FPS;
-}
 static void set_backlight(int percent) {
 #if DT_NODE_EXISTS(DT_NODELABEL(disp_bl))
   const struct device *led = DEVICE_DT_GET(DT_PARENT(DT_NODELABEL(disp_bl)));
@@ -135,6 +125,7 @@ static void direct_lvgl_flush(lv_display_t *display, const lv_area_t *area,
 static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   if(!transfer_failed&&!frame->dirty_count&&
      !(frame->flags&DTE_RENDER_FRAME_CHANGED))return false;
+  bool force=transfer_failed||!full_hash_valid;
   const struct device *disp=DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
   struct dte_canvas target=DTE_CANVAS_INIT;
   target.scene_width=dte_width();target.scene_height=dte_height();
@@ -147,43 +138,44 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   region_us+=draw_elapsed;region_count++;
   if(draw_elapsed>region_max_us)region_max_us=draw_elapsed;
   if(status!=DTE_STATUS_OK){transfer_failed=true;LOG_ERR("theme full render failed");return false;}
-  int rows=CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS/dte_width();
-  if(rows>64)rows=64;
-  if(rows<1){transfer_failed=true;LOG_ERR("full frame band too small");return false;}
+  if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT))
+    dte_filter_apply(DTE_FILTER_CRT,&target);
+  uint32_t changed[18]={0};
+  int ncols=(dte_width()+15)/16,nrows=(dte_height()+15)/16;
+  for(int ty=0;ty<nrows;ty++)for(int tx=0;tx<ncols;tx++){
+    uint32_t hash=dte_hash_rgb565_tile(full_pixels,dte_width(),0,0,tx*16,ty*16,
+                                       dte_width(),dte_height());
+    int index=ty*18+tx;
+    if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
+    tile_hash[index]=hash;
+  }
   bool sent=false;
-  for(int y=0;y<dte_height();y+=rows){
-    int h=MIN(rows,dte_height()-y),n=dte_width()*h;
+  struct dte_dirty_rect rect;
+  while(dte_next_dirty_rect(changed,dte_width(),dte_height(),&rect)){
+    int n=rect.width*rect.height;
+    if(n>(int)(sizeof(packed_pixels)/sizeof(packed_pixels[0]))){
+      transfer_failed=true;LOG_ERR("full-frame tile rectangle exceeds scratch");break;
+    }
+    int p=0;
+    for(int y=0;y<rect.height;y++)for(int x=0;x<rect.width;x++)
+      packed_pixels[p++]=full_pixels[(rect.y+y)*dte_width()+rect.x+x];
     if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
-      full_pixels[y*dte_width()+i]=__builtin_bswap16(full_pixels[y*dte_width()+i]);
-    struct display_buffer_descriptor desc={.width=dte_width(),.height=h,.pitch=dte_width(),.buf_size=(size_t)n*2u};
+      packed_pixels[i]=__builtin_bswap16(packed_pixels[i]);
+    struct display_buffer_descriptor desc={.width=rect.width,.height=rect.height,
+      .pitch=rect.width,.buf_size=(size_t)n*2u};
     uint32_t write_started=k_cycle_get_32();
-    int rc=display_write(disp,0,y,&desc,&full_pixels[y*dte_width()]);
+    int rc=display_write(disp,rect.x,rect.y,&desc,packed_pixels);
     display_us+=k_cyc_to_us_floor32(k_cycle_get_32()-write_started);
     display_count++;present_writes++;present_bytes+=(uint32_t)n*2u;
-    if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
-      full_pixels[y*dte_width()+i]=__builtin_bswap16(full_pixels[y*dte_width()+i]);
-    if(rc){transfer_failed=true;LOG_ERR("display full band failed: %d",rc);break;}
+    if(rc){transfer_failed=true;LOG_ERR("display full tiles failed: %d",rc);break;}
     sent=true;
   }
+  full_hash_valid=!transfer_failed;
   return sent&&!transfer_failed;
 }
 #else
 /* ABI 1.2+ renders final pixels directly into a bounded strip. The display
  * driver owns each synchronous buffer only until display_write() returns. */
-static uint32_t hash_tile(const uint16_t *pixels,int stride,int base_x,int base_y,
-                          int tile_x,int tile_y,int width,int height){
-  uint32_t hash=2166136261u;
-  int left=MAX(tile_x,base_x),top=MAX(tile_y,base_y);
-  int right=MIN(tile_x+16,base_x+width),bottom=MIN(tile_y+16,base_y+height);
-  hash=(hash^(uint32_t)left)*16777619u;
-  hash=(hash^(uint32_t)top)*16777619u;
-  hash=(hash^(uint32_t)right)*16777619u;
-  hash=(hash^(uint32_t)bottom)*16777619u;
-  for(int y=top;y<bottom;y++)for(int x=left;x<right;x++)
-    hash=(hash^pixels[(y-base_y)*stride+x-base_x])*16777619u;
-  return hash;
-}
-
 static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
   bool sent = false;
@@ -237,12 +229,14 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
         LOG_ERR("theme strip render failed");
         break;
       }
+      if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT))
+        dte_filter_apply(DTE_FILTER_CRT,&target);
       uint32_t changed[18]={0};
       int tx0=rect->x/16,tx1=(rect->x+rect->width-1)/16;
       int ty0=y/16,ty1=(y+h-1)/16;
       for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++){
-        uint32_t hash=hash_tile(transfer_pixels,rect->width,rect->x,y,
-                                tx*16,ty*16,rect->width,h);
+        uint32_t hash=dte_hash_rgb565_tile(transfer_pixels,rect->width,rect->x,y,
+                                           tx*16,ty*16,rect->width,h);
         int index=ty*18+tx;
         if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         tile_hash[index]=hash;
@@ -294,8 +288,7 @@ static void frame_work_cb(struct k_work *work) {
   ARG_UNUSED(work);
   if (!canvas || !startup_ready || asleep || touch_release_pending)
     return;
-  uint32_t wall_now = k_uptime_get_32();
-  uint32_t now=animation_time(wall_now);
+  uint32_t now = k_uptime_get_32();
   struct zmk_endpoint_instance ep = zmk_endpoint_get_selected();
   int layer = zmk_keymap_highest_layer_active();
   k_spinlock_key_t key = k_spin_lock(&state_lock);
@@ -303,9 +296,9 @@ static void frame_work_cb(struct k_work *work) {
   k_spin_unlock(&state_lock, key);
   dte_set_state(sw, layer, ep.transport, zmk_ble_active_profile_index(), sm, sl,
                 sr, sd, -1, -1);
-  if ((int32_t)(wall_now - stats_deadline) >= 0) {
+  if ((int32_t)(now - stats_deadline) >= 0) {
     published_fps_x10 = measured_fps_x10;
-    stats_deadline = wall_now + 500;
+    stats_deadline = now + 500;
   }
   dte_set_display_stats(backlight_percent, published_fps_x10);
   dte_set_startup_phase(startup_phase);
@@ -322,7 +315,6 @@ static void frame_work_cb(struct k_work *work) {
   plan_max_us = MAX(plan_max_us, cost);
   plan_count++;
   bool presented = frame_status == DTE_STATUS_OK && present_frame(now, &frame);
-  advance_animation_time(now,active,presented);
   reveal_startup();
   if (!startup_visible && transfer_failed && ++startup_attempts < 3)
     k_work_reschedule_for_queue(zmk_display_work_q(), &frame_work, K_MSEC(50));
@@ -348,17 +340,13 @@ static void frame_work_cb(struct k_work *work) {
   animation_open = active;
   animation_last = completed;
   frames++;
-  if (wall_now - last_report >= 5000) {
+  if (now - last_report >= 5000) {
     LOG_DBG("rendered %u frames in %u ms (transport refresh is separate)",
-            frames, wall_now - last_report);
+            frames, now - last_report);
     frames = 0;
-    last_report = wall_now;
+    last_report = now;
   }
   if (active) {
-    if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_SYNC_ANIMATION)){
-      k_work_reschedule_for_queue(zmk_display_work_q(),&frame_work,K_MSEC(1));
-      return;
-    }
     uint32_t schedule_now=k_uptime_get_32();
     deadline=(frame.flags&DTE_RENDER_DEADLINE_VALID)?frame.next_frame_at_ms:0;
     /* A slow frame must not trigger an immediate catch-up loop. Skip every
@@ -455,7 +443,7 @@ static void finish_release(void) {
     return;
   dte_touch_at(CLAMP(release_sample.y, 0, 279),
                239 - CLAMP(release_sample.x, 0, 239), 0,
-               release_sample.timestamp, animation_time(k_uptime_get_32()));
+               release_sample.timestamp, k_uptime_get_32());
   held = touch_release_pending = false;
 }
 static void release_cb(struct k_work *work) {
@@ -490,7 +478,7 @@ static void touch_work_cb(struct k_work *work) {
   while (k_msgq_get(&touch_samples, &sample, K_NO_WAIT) == 0) {
     if (sample.kind) {
       if ((held || touch_release_pending) &&
-          dte_touch_hint(sample.kind, animation_time(k_uptime_get_32()))) {
+          dte_touch_hint(sample.kind, k_uptime_get_32())) {
         touch_hints++;
         changed = true;
         LOG_INF("touch gesture=%d", sample.kind);
@@ -514,8 +502,8 @@ static void touch_work_cb(struct k_work *work) {
       k_work_cancel_delayable(&release_work);
     }
     /* Sensor portrait 240x280 -> mdac 0x60 landscape 280x240. */
-    dte_touch_at(CLAMP(sample.y,0,279),239-CLAMP(sample.x,0,239),sample.down,
-                 sample.timestamp,animation_time(k_uptime_get_32()));
+    dte_touch(CLAMP(sample.y, 0, 279), 239 - CLAMP(sample.x, 0, 239),
+              sample.down, sample.timestamp);
     if (sample.down && !held) {
       touch_contacts++;
       LOG_INF("touch down raw=%d,%d", sample.x, sample.y);

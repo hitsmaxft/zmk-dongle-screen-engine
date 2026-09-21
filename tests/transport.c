@@ -15,6 +15,12 @@ int main(void) {
   struct dte_dirty_rect disjoint={144,64,16,16};
   assert(!dte_intersect_dirty_rect(&disjoint,&layer,&clipped));
 
+  uint16_t pixels[16 * 16] = {0};
+  uint32_t empty = dte_hash_rgb565_tile(pixels, 16, 0, 0, 0, 0, 16, 16);
+  pixels[15 * 16 + 15] = 0x1234;
+  uint32_t changed_hash = dte_hash_rgb565_tile(pixels, 16, 0, 0, 0, 0, 16, 16);
+  assert(empty != changed_hash);
+  assert(changed_hash == dte_hash_rgb565_tile(pixels, 16, 0, 0, 0, 0, 16, 16));
   for(int h=240;h<=280;h+=40) {
     bool rows[18]={0};for(int i=0;i<(h+15)/16;i++)rows[i]=true;
     int cursor=0,y,n,expected=0;

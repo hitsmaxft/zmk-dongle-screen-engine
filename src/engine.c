@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include <zmk/dongle_theme/raster.h>
 #include <zmk/dongle_theme/theme.h>
+#include <zmk/dongle_theme/filter.h>
 #include <zmk/dongle_theme/transport.h>
 
 #if defined(__wasm__)
@@ -37,6 +38,8 @@ static int preview_strip_pixels=4480;
 static uint32_t preview_transfer_bytes,preview_dirty_rects,preview_draw_calls;
 static uint32_t preview_tile_hash[18*18];
 static int preview_force=1;
+static int preview_filter=DTE_FILTER_NONE,preview_filter_changed;
+static uint32_t preview_filter_pixels;
 #endif
 static struct dte_snapshot state;
 static int width = 280, height = 240;
@@ -360,6 +363,11 @@ int dte_render(uint32_t now) {
   if (dte_frame(now, &result) != DTE_STATUS_OK)
     return 0;
 #if !defined(__ZEPHYR__)
+  if(preview_filter_changed){
+    result.flags|=DTE_RENDER_FRAME_CHANGED;
+    result.dirty_count=1;
+    result.dirty[0]=(struct dte_rect){0,0,(uint16_t)width,(uint16_t)height};
+  }
   int coherent=(result.flags&DTE_RENDER_CONTINUOUS)!=0;
   if(coherent&&result.dirty_count>1){
     int left=width,top=height,right=0,bottom=0;
@@ -373,7 +381,7 @@ int dte_render(uint32_t now) {
     result.dirty[0]=(struct dte_rect){left,top,right-left,bottom-top};
   }
   uint32_t changed[18];
-  preview_transfer_bytes=preview_draw_calls=0;
+  preview_transfer_bytes=preview_draw_calls=preview_filter_pixels=0;
   preview_dirty_rects=result.dirty_count;
   for (unsigned i = 0; i < result.dirty_count; i++) {
     const struct dte_rect *r = &result.dirty[i];
@@ -389,14 +397,13 @@ int dte_render(uint32_t now) {
       canvas.buffer_size=((uint32_t)(h-1)*width+r->width)*2u;
       canvas.pixels=preview_pixels+y*width+r->x;
       if(dte_draw(now,&canvas)!=DTE_STATUS_OK)return 0;
+      preview_filter_pixels+=dte_filter_apply((uint8_t)preview_filter,&canvas);
       preview_draw_calls++;
       for(int i=0;i<18;i++)changed[i]=0;
       int tx0=r->x/16,tx1=(r->x+r->width-1)/16,ty0=y/16,ty1=(y+h-1)/16;
       for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++){
-        uint32_t hash=2166136261u;int x0=tx*16,y0=ty*16;
-        int x1=x0+16>width?width:x0+16,y1=y0+16>height?height:y0+16;
-        for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)
-          hash=(hash^preview_pixels[yy*width+xx])*16777619u;
+        uint32_t hash=dte_hash_rgb565_tile(preview_pixels,width,0,0,tx*16,ty*16,
+                                           width,height);
         int index=ty*18+tx;
         if(preview_force||preview_tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         preview_tile_hash[index]=hash;
@@ -411,6 +418,7 @@ int dte_render(uint32_t now) {
     }
   }
   preview_force=0;
+  preview_filter_changed=0;
 #endif
   return (result.flags & (DTE_RENDER_CONTINUOUS | DTE_RENDER_DEADLINE_VALID)) !=
          0;
@@ -421,6 +429,14 @@ int dte_preview_set_strip_pixels(int pixels){
   if(pixels<280)pixels=280;if(pixels>DTE_MAX_PIXELS)pixels=DTE_MAX_PIXELS;
   preview_strip_pixels=pixels;return preview_strip_pixels;
 }
+int dte_preview_set_filter(int filter){
+  if(filter!=DTE_FILTER_NONE&&filter!=DTE_FILTER_CRT)
+    return DTE_STATUS_INVALID_ARGUMENT;
+  if(preview_filter!=filter){preview_filter=filter;preview_filter_changed=1;preview_force=1;}
+  return preview_filter;
+}
+int dte_preview_filter(void){return preview_filter;}
+uint32_t dte_preview_filter_pixels(void){return preview_filter_pixels;}
 uint32_t dte_preview_transfer_bytes(void){return preview_transfer_bytes;}
 uint32_t dte_preview_dirty_rects(void){return preview_dirty_rects;}
 uint32_t dte_preview_draw_calls(void){return preview_draw_calls;}

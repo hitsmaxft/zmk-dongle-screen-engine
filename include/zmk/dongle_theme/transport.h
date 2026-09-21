@@ -25,6 +25,27 @@ static inline bool dte_intersect_dirty_rect(const struct dte_dirty_rect *a,
   return true;
 }
 
+/* Hash the intersection of one scene-aligned 16x16 tile and a canvas.
+ * A region canvas may begin or end within the tile. */
+static inline uint32_t dte_hash_rgb565_tile(const uint16_t *pixels, int stride,
+                                            int base_x, int base_y, int tile_x,
+                                            int tile_y, int width, int height) {
+  uint32_t hash = 2166136261u;
+  int left = tile_x > base_x ? tile_x : base_x;
+  int top = tile_y > base_y ? tile_y : base_y;
+  int right = tile_x + 16 < base_x + width ? tile_x + 16 : base_x + width;
+  int bottom = tile_y + 16 < base_y + height ? tile_y + 16 : base_y + height;
+  hash = (hash ^ (uint32_t)left) * 16777619u;
+  hash = (hash ^ (uint32_t)top) * 16777619u;
+  hash = (hash ^ (uint32_t)right) * 16777619u;
+  hash = (hash ^ (uint32_t)bottom) * 16777619u;
+  for (int y = top; y < bottom; y++)
+    for (int x = left; x < right; x++)
+      hash = (hash ^ pixels[(y - base_y) * stride + x - base_x]) *
+             16777619u;
+  return hash;
+}
+
 /* Convert 16px damage rows into at most capacity scene rectangles. Unlike the
  * legacy packet iterator below, rectangles are not constrained by a transport
  * scratch size: the ABI 1.3 host subdivides them into strips later. If the

@@ -23,6 +23,7 @@ options:
   --split0-battery N        battery percentage (default: 87)
   --split1-battery N        battery percentage (default: 64)
   --connected 0|1           split connection state (default: 1)
+  --filter none|crt         Engine framebuffer filter (default: none)
   --call NAME=A,B           call an exported integer setter; repeatable
   --gesture KIND@MS         apply a gesture before rendering; repeatable
 `);
@@ -41,7 +42,7 @@ function parse(argv) {
     width: 280, height: 240,
     wpm: 72, layer: 0, layerName: 'BASE', endpoint: 2, mods: 0,
     batteryCount: 3, dongleBattery: 93, split0Battery: 87,
-    split1Battery: 64, connected: 1, calls: [], gestures: [],
+    split1Battery: 64, connected: 1, filter: 'none', calls: [], gestures: [],
   };
   const numeric = new Map([
     ['--time', 'time'], ['--frames', 'frames'], ['--fps', 'fps'],
@@ -53,9 +54,9 @@ function parse(argv) {
   ]);
   for (let i = 1; i < argv.length; i++) {
     const flag = argv[i];
-    if (flag === '--output' || flag === '--layer-name') {
+    if (flag === '--output' || flag === '--layer-name' || flag === '--filter') {
       if (++i >= argv.length) usage(`${flag} requires a value`);
-      options[flag === '--output' ? 'output' : 'layerName'] = argv[i];
+      options[flag === '--output' ? 'output' : flag === '--filter' ? 'filter' : 'layerName'] = argv[i];
     } else if (numeric.has(flag)) {
       if (++i >= argv.length) usage(`${flag} requires a value`);
       options[numeric.get(flag)] = integer(argv[i], flag);
@@ -79,6 +80,7 @@ function parse(argv) {
   if (options.frames <= 0 || options.fps <= 0) usage('frames and fps must be positive');
   if (![2, 3].includes(options.batteryCount)) usage('--battery-count must be 2 or 3');
   if (![0, 1].includes(options.connected)) usage('--connected must be 0 or 1');
+  if (!['none', 'crt'].includes(options.filter)) usage('--filter must be none or crt');
   return options;
 }
 
@@ -139,6 +141,7 @@ function setLayerName(api, value) {
   const {instance} = await WebAssembly.instantiate(fs.readFileSync(wasmPath));
   const api = instance.exports;
   api.dte_init(options.width, options.height);
+  if (api.dte_preview_set_filter) api.dte_preview_set_filter(options.filter === 'crt' ? 1 : 0);
   api.dte_set_battery_count(options.batteryCount);
   api.dte_set_state(options.wpm, options.layer, options.endpoint, 1, options.mods,
     options.split0Battery, options.split1Battery, options.dongleBattery, 1,

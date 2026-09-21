@@ -21,6 +21,7 @@
 - The engine MAY bundle small language-neutral bitmap fonts and raster primitives. Font availability does not imply engine-owned localization.
 - Preview-shell language changes MUST NOT mutate the theme framebuffer unless the theme independently defines such an API.
 - Keep `docs/api.md` synchronized with exported headers and current implementation limits. Do not document planned registry, fallback or display-format support as implemented.
+- Engine frame filters MUST run after Theme drawing and before tile hashing or wire-byte conversion. They MUST use scene coordinates so full and region canvases remain pixel-identical; a preview toggle MUST preserve Theme time, input and locale.
 
 ## UI typography invariants
 
