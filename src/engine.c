@@ -393,10 +393,8 @@ int dte_render(uint32_t now) {
       for(int i=0;i<18;i++)changed[i]=0;
       int tx0=r->x/16,tx1=(r->x+r->width-1)/16,ty0=y/16,ty1=(y+h-1)/16;
       for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++){
-        uint32_t hash=2166136261u;int x0=tx*16,y0=ty*16;
-        int x1=x0+16>width?width:x0+16,y1=y0+16>height?height:y0+16;
-        for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)
-          hash=(hash^preview_pixels[yy*width+xx])*16777619u;
+        uint32_t hash=dte_hash_rgb565_tile(preview_pixels,width,0,0,tx*16,ty*16,
+                                           width,height);
         int index=ty*18+tx;
         if(preview_force||preview_tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         preview_tile_hash[index]=hash;

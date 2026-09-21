@@ -34,9 +34,9 @@ config ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER
     depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
     help
       Retain one 280x240 RGB565 frame for themes whose large moving geometry
-      needs coherent presentation. The host draws the full scene once, then
-      sends ordered row bands from that same frame. This uses 134400 bytes RAM
-      instead of the default bounded-region renderer.
+      needs one complete draw. The host hashes 16x16 tiles and sends only
+      changed packed rectangles. This uses 139792 bytes RAM: 134400 bytes for
+      pixels, 4096 bytes for transfer scratch and 1296 bytes for tile hashes.
 
 config ZMK_DONGLE_SCREEN_SYNC_ANIMATION
     bool "Advance animation only after a presented frame"

@@ -4,6 +4,21 @@
 #include <stdint.h>
 struct dte_dirty_rect {int x,y,width,height;};
 
+/* Hash one scene-aligned 16x16 RGB565 tile from a canvas containing that tile. */
+static inline uint32_t dte_hash_rgb565_tile(const uint16_t *pixels, int stride,
+                                            int base_x, int base_y, int tile_x,
+                                            int tile_y, int width, int height) {
+  uint32_t hash = 2166136261u;
+  int w = tile_x + 16 > width ? width - tile_x : 16;
+  int h = tile_y + 16 > height ? height - tile_y : 16;
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      hash = (hash ^ pixels[(tile_y - base_y + y) * stride +
+                            tile_x - base_x + x]) *
+             16777619u;
+  return hash;
+}
+
 /* Convert 16px damage rows into at most capacity scene rectangles. Unlike the
  * legacy packet iterator below, rectangles are not constrained by a transport
  * scratch size: the ABI 1.3 host subdivides them into strips later. If the

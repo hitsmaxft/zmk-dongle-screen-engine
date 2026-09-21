@@ -167,6 +167,12 @@ temporally scattered tile writes on panels without a TE/vsync signal. Themes
 still need realistic damage bounds; this policy improves coherence but cannot
 make an SPI update atomic.
 
+When `ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER` is enabled, the Theme draws the full
+scene once. The host then hashes the final 16x16 RGB565 tiles and copies only
+changed tiles into the bounded 2,048-pixel transfer scratch. A failed display
+write forces every tile to be sent on the next eligible frame. Byte swapping is
+performed on transfer scratch, never in place on the retained framebuffer.
+
 `ZMK_DONGLE_SCREEN_SYNC_ANIMATION` changes only the host animation clock: it
 advances one logical `1 / CONFIG_ZMK_DONGLE_SCREEN_FPS` step after each
 successful presentation rather than following wall clock. Full-frame mode

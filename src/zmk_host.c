@@ -50,12 +50,13 @@ static unsigned startup_attempts;
 static uint32_t deadline, last_report, frames;
 #if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER)
 static uint16_t full_pixels[DTE_MAX_PIXELS] __aligned(4);
+static bool full_hash_valid;
 #else
 static uint16_t
     transfer_pixels[CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS] __aligned(4);
+#endif
 static uint16_t packed_pixels[2048] __aligned(4);
 static uint32_t tile_hash[18 * 18];
-#endif
 static void frame_work_cb(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(frame_work, frame_work_cb);
 static uint32_t animation_time(uint32_t wall_now){
@@ -135,6 +136,7 @@ static void direct_lvgl_flush(lv_display_t *display, const lv_area_t *area,
 static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   if(!transfer_failed&&!frame->dirty_count&&
      !(frame->flags&DTE_RENDER_FRAME_CHANGED))return false;
+  bool force=transfer_failed||!full_hash_valid;
   const struct device *disp=DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
   struct dte_canvas target=DTE_CANVAS_INIT;
   target.scene_width=dte_width();target.scene_height=dte_height();
@@ -147,38 +149,42 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   region_us+=draw_elapsed;region_count++;
   if(draw_elapsed>region_max_us)region_max_us=draw_elapsed;
   if(status!=DTE_STATUS_OK){transfer_failed=true;LOG_ERR("theme full render failed");return false;}
-  int rows=CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS/dte_width();
-  if(rows>64)rows=64;
-  if(rows<1){transfer_failed=true;LOG_ERR("full frame band too small");return false;}
+  uint32_t changed[18]={0};
+  int ncols=(dte_width()+15)/16,nrows=(dte_height()+15)/16;
+  for(int ty=0;ty<nrows;ty++)for(int tx=0;tx<ncols;tx++){
+    uint32_t hash=dte_hash_rgb565_tile(full_pixels,dte_width(),0,0,tx*16,ty*16,
+                                       dte_width(),dte_height());
+    int index=ty*18+tx;
+    if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
+    tile_hash[index]=hash;
+  }
   bool sent=false;
-  for(int y=0;y<dte_height();y+=rows){
-    int h=MIN(rows,dte_height()-y),n=dte_width()*h;
+  struct dte_dirty_rect rect;
+  while(dte_next_dirty_rect(changed,dte_width(),dte_height(),&rect)){
+    int n=rect.width*rect.height;
+    if(n>(int)(sizeof(packed_pixels)/sizeof(packed_pixels[0]))){
+      transfer_failed=true;LOG_ERR("full-frame tile rectangle exceeds scratch");break;
+    }
+    int p=0;
+    for(int y=0;y<rect.height;y++)for(int x=0;x<rect.width;x++)
+      packed_pixels[p++]=full_pixels[(rect.y+y)*dte_width()+rect.x+x];
     if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
-      full_pixels[y*dte_width()+i]=__builtin_bswap16(full_pixels[y*dte_width()+i]);
-    struct display_buffer_descriptor desc={.width=dte_width(),.height=h,.pitch=dte_width(),.buf_size=(size_t)n*2u};
+      packed_pixels[i]=__builtin_bswap16(packed_pixels[i]);
+    struct display_buffer_descriptor desc={.width=rect.width,.height=rect.height,
+      .pitch=rect.width,.buf_size=(size_t)n*2u};
     uint32_t write_started=k_cycle_get_32();
-    int rc=display_write(disp,0,y,&desc,&full_pixels[y*dte_width()]);
+    int rc=display_write(disp,rect.x,rect.y,&desc,packed_pixels);
     display_us+=k_cyc_to_us_floor32(k_cycle_get_32()-write_started);
     display_count++;present_writes++;present_bytes+=(uint32_t)n*2u;
-    if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
-      full_pixels[y*dte_width()+i]=__builtin_bswap16(full_pixels[y*dte_width()+i]);
-    if(rc){transfer_failed=true;LOG_ERR("display full band failed: %d",rc);break;}
+    if(rc){transfer_failed=true;LOG_ERR("display full tiles failed: %d",rc);break;}
     sent=true;
   }
+  full_hash_valid=!transfer_failed;
   return sent&&!transfer_failed;
 }
 #else
 /* ABI 1.2+ renders final pixels directly into a bounded strip. The display
  * driver owns each synchronous buffer only until display_write() returns. */
-static uint32_t hash_tile(const uint16_t *pixels,int stride,int base_x,int base_y,
-                          int tile_x,int tile_y,int width,int height){
-  uint32_t hash=2166136261u;
-  int w=MIN(16,width-tile_x),h=MIN(16,height-tile_y);
-  for(int y=0;y<h;y++)for(int x=0;x<w;x++)
-    hash=(hash^pixels[(tile_y-base_y+y)*stride+tile_x-base_x+x])*16777619u;
-  return hash;
-}
-
 static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
   bool sent = false;
@@ -236,8 +242,8 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
       int tx0=rect->x/16,tx1=(rect->x+rect->width-1)/16;
       int ty0=y/16,ty1=(y+h-1)/16;
       for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++){
-        uint32_t hash=hash_tile(transfer_pixels,rect->width,rect->x,y,
-                                tx*16,ty*16,dte_width(),dte_height());
+        uint32_t hash=dte_hash_rgb565_tile(transfer_pixels,rect->width,rect->x,y,
+                                          tx*16,ty*16,dte_width(),dte_height());
         int index=ty*18+tx;
         if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         tile_hash[index]=hash;
