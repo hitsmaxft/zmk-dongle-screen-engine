@@ -2,7 +2,10 @@
 #include <zmk/dongle_theme/filter.h>
 #include <stdbool.h>
 
-static const uint8_t edge_opa[12] = {150,112,82,60,44,32,24,18,13,9,5,3};
+/* Tuned for emissive pixel themes: a real visible glass bezel at 280x240,
+ * while leaving the central content untouched. */
+static const uint8_t edge_opa[16] = {216,188,160,136,114,94,76,61,
+                                     48,38,30,23,17,12,8,4};
 
 static uint16_t darken(uint16_t pixel, uint8_t opacity) {
   uint32_t keep = 255u - opacity;
@@ -33,12 +36,12 @@ static uint8_t edge_opacity(int x, int y, int width, int height, int side,
   int left_d = x, right_d = width - 1 - x;
   int top_d = y, bottom_d = height - 1 - y;
   uint8_t opacity = 0;
-  if (left_d < side && left_d < 12) opacity = edge_opa[left_d];
-  if (right_d < side && right_d < 12 && edge_opa[right_d] > opacity)
+  if (left_d < side && left_d < 16) opacity = edge_opa[left_d];
+  if (right_d < side && right_d < 16 && edge_opa[right_d] > opacity)
     opacity = edge_opa[right_d];
-  if (top_d < top && top_d < 12 && edge_opa[top_d] > opacity)
+  if (top_d < top && top_d < 16 && edge_opa[top_d] > opacity)
     opacity = edge_opa[top_d];
-  if (bottom_d < bottom && bottom_d < 12) {
+  if (bottom_d < bottom && bottom_d < 16) {
     uint32_t boosted = (uint32_t)edge_opa[bottom_d] * 115u / 100u;
     if (boosted > 255u) boosted = 255u;
     if (boosted > opacity) opacity = (uint8_t)boosted;
@@ -51,10 +54,10 @@ uint32_t dte_filter_apply(uint8_t type, const struct dte_canvas *canvas) {
   if (type != DTE_FILTER_CRT) return 0;
   int width = canvas->scene_width, height = canvas->scene_height;
   int short_side = width < height ? width : height;
-  int side = scale(10, short_side), top = scale(8, short_side);
-  int bottom = scale(12, short_side), radius = scale(18, short_side);
-  int highlight_y0 = scale(3, short_side), highlight_y1 = scale(4, short_side);
-  int highlight_inset = scale(22, short_side);
+  int side = scale(16, short_side), top = scale(12, short_side);
+  int bottom = scale(18, short_side), radius = scale(24, short_side);
+  int highlight_y0 = scale(4, short_side), highlight_y1 = scale(6, short_side);
+  int highlight_inset = scale(16, short_side);
   uint16_t highlight = (uint16_t)(((0xa8u >> 3) << 11) |
                                   ((0xffu >> 2) << 5) | (0xd0u >> 3));
   uint32_t inspected = 0;
@@ -87,8 +90,8 @@ uint32_t dte_filter_apply(uint8_t type, const struct dte_canvas *canvas) {
         int from_end = x - highlight_inset;
         int other = width - highlight_inset - 1 - x;
         if (other < from_end) from_end = other;
-        int ramp = scale(24, short_side);
-        uint8_t light_opa = (uint8_t)(18 * (from_end < ramp ? from_end : ramp) /
+        int ramp = scale(32, short_side);
+        uint8_t light_opa = (uint8_t)(42 * (from_end < ramp ? from_end : ramp) /
                                       (ramp ? ramp : 1));
         if (span > 0 && light_opa) *pixel = mix565(*pixel, highlight, light_opa);
       }
