@@ -48,6 +48,15 @@ config ZMK_DONGLE_SCREEN_SYNC_ANIMATION
       Slow hardware preserves every intermediate animation step instead of
       skipping to wall-clock time; wall-clock duration consequently stretches.
 
+config ZMK_DONGLE_SCREEN_FILTER_CRT
+    bool "Apply the lightweight CRT glass filter"
+    default n
+    depends on ZMK_DONGLE_SCREEN_ENGINE
+    help
+      Add asymmetric non-linear edge darkening, rounded black corners and a
+      weak top highlight after Theme drawing. This performs no barrel warp and
+      allocates no additional framebuffer.
+
 config ZMK_DONGLE_SCREEN_STRIP_PIXELS
     int "Maximum RGB565 pixels in the firmware render strip"
     default 4480

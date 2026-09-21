@@ -11,12 +11,12 @@ def compile_variant(engine, lvgl, theme, output, manifest, variant):
     output.mkdir(parents=True,exist_ok=True)
     raster=output/'dongle_raster_assets.h'
     if not raster.exists(): subprocess.run([sys.executable,str(engine/'scripts/generate_raster_assets.py'),'--lvgl',str(lvgl.resolve()),'--output',str(raster)],check=True)
-    sources=[engine/'src/engine.c',engine/'src/raster.c',engine/'src/ui.c',
+    sources=[engine/'src/engine.c',engine/'src/filter.c',engine/'src/raster.c',engine/'src/ui.c',
              engine/'src/tre/surface.c',engine/'src/tre/render.c',
              engine/'src/tre/image.c',engine/'src/tre/damage.c',
              engine/'src/tre/tile.c']+[theme/s for s in source_list(manifest,variant)]
     common=['-O2','-fno-builtin','-ffp-contract=off','-I',str(engine/'include'),'-I',str(theme/'include'),'-I',str(output),*[str(s) for s in sources]]
-    exports=['dte_init','dte_init_ex','dte_last_status','dte_active_abi_version','dte_name_buffer','dte_set_state','dte_set_snapshot','dte_set_battery_count','dte_set_display_stats','dte_set_startup_phase','dte_set_layer_name','dte_gesture','dte_gesture_x','dte_gesture_y','dte_backlight_get','dte_backlight_adjust','dte_touch','dte_touch_hint','dte_touch_active','dte_touch_cancel','dte_frame','dte_draw','dte_render','dte_pixels','dte_width','dte_height','dte_hash','dte_preview_set_strip_pixels','dte_preview_transfer_bytes','dte_preview_dirty_rects','dte_preview_draw_calls','dte_animation_options','dte_set_animation','dte_get_animation','dte_set_animation_duration','dte_get_animation_duration','dte_force_redraw','dtr_dirty_tiles',*manifest.get('exports',[]),*manifest.get('variant_exports',{}).get(variant,[])]
+    exports=['dte_init','dte_init_ex','dte_last_status','dte_active_abi_version','dte_name_buffer','dte_set_state','dte_set_snapshot','dte_set_battery_count','dte_set_display_stats','dte_set_startup_phase','dte_set_layer_name','dte_gesture','dte_gesture_x','dte_gesture_y','dte_backlight_get','dte_backlight_adjust','dte_touch','dte_touch_hint','dte_touch_active','dte_touch_cancel','dte_frame','dte_draw','dte_render','dte_pixels','dte_width','dte_height','dte_hash','dte_preview_set_strip_pixels','dte_preview_set_filter','dte_preview_filter','dte_preview_filter_pixels','dte_preview_transfer_bytes','dte_preview_dirty_rects','dte_preview_draw_calls','dte_animation_options','dte_set_animation','dte_get_animation','dte_set_animation_duration','dte_get_animation_duration','dte_force_redraw','dtr_dirty_tiles',*manifest.get('exports',[]),*manifest.get('variant_exports',{}).get(variant,[])]
     clang=shutil.which('clang')
     if not clang or not shutil.which('wasm-ld'): raise RuntimeError('Clang with wasm-ld is required; enter a toolchain environment that provides both')
     env=os.environ.copy();env['NIX_HARDENING_ENABLE']='';env['NIX_LDFLAGS']=''

@@ -173,6 +173,24 @@ changed tiles into the bounded 2,048-pixel transfer scratch. A failed display
 write forces every tile to be sent on the next eligible frame. Byte swapping is
 performed on transfer scratch, never in place on the retained framebuffer.
 
+## Frame filters
+
+Frame filters consume the final caller-owned RGB565 canvas in scene
+coordinates. The order is fixed:
+
+```text
+Theme draw -> frame filter -> tile hash -> wire conversion -> display
+```
+
+The built-in CRT filter is selected in firmware with
+`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT`. Native/WASM tools use
+`dte_preview_set_filter(DTE_FILTER_CRT)` and report the number of inspected
+pixels through `dte_preview_filter_pixels()`. The filter uses integer RGB565
+blending and a constant opacity table; it allocates no framebuffer and performs
+no geometric resampling. A preview filter change invalidates the complete
+scene, while an unchanged filtered frame remains eligible for zero-byte tile
+hash presentation.
+
 `ZMK_DONGLE_SCREEN_SYNC_ANIMATION` changes only the host animation clock: it
 advances one logical `1 / CONFIG_ZMK_DONGLE_SCREEN_FPS` step after each
 successful presentation rather than following wall clock. Full-frame mode

@@ -78,11 +78,25 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 过滤后的实际 payload；必须在此路径达标后，再按性能需要把 `frame` 与 `draw`
 拆成原生区域实现。
 
-连续动画与离散状态采用不同提交策略：前者将本帧 dirty bounds 合并为连续区域，
-按自上而下 strip 顺序发送，避免 tile hash 把一帧拆成棋盘状的不同时刻；后者继续
-使用 tile hash 节省 SPI。无 TE/vsync 的面板仍可能出现单一扫描缝，故不得宣称
-此策略等同硬件换帧。
-固件不得自行保存完整 RGB565 framebuffer；预览全帧仅供取图、hash 与比对。
+连续动画与离散状态采用不同提交策略：低 RAM 路径以前者合并 dirty bounds 并按
+自上而下 strip 发送，后者使用 tile hash；可选 full framebuffer 路径则令 Theme
+整景绘制一次，再对最终 16×16 tile 判脏并打包传输。无 TE/vsync 的面板仍可能
+出现扫描缝，故不得宣称任一策略等同硬件换帧。
+
+## Frame filters
+
+Engine filter 必须位于 Theme draw 之后、tile hash 之前，并使用 scene 坐标；如此
+同一 Theme 的 full canvas 与分区 canvas 方能逐像素一致。CRT filter 只作非线性
+暗角、圆角、顶部弱高光及底部加深，不作 barrel warp。固件以
+`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT` 开启，默认关闭；WASM 参数区可即时切换，
+不得重置 Theme 时间、输入或 locale。
+
+直接生成滤镜证据，不须启浏览器：
+
+```sh
+node scripts/render_wasm.cjs .build/default-v001 \
+  --time 1000 --filter crt --output .build/default-v001/crt.png
+```
 
 ## GitHub Actions preview
 

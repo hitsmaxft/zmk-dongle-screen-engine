@@ -57,6 +57,21 @@ submits only changed packed rectangles. Its static render storage is 139,792
 bytes: 134,400 bytes of RGB565 pixels, 4,096 bytes of transfer scratch and
 1,296 bytes of hashes.
 
+### Optional CRT glass filter
+
+`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT` enables an allocation-free RGB565
+post-process after Theme drawing and before tile hashing. It adds asymmetric
+non-linear edge darkening, 18 px rounded black corners, a weak mint top
+reflection and a slightly darker bottom edge. It performs no barrel warp and
+adds no framebuffer. The default remains off, so existing Theme output and ABI
+1.3 descriptors are unchanged.
+
+The WASM preview exposes the same filter under **Animation parameters → Frame
+filter**. Switching it redraws the scene without resetting Theme time, input or
+locale. `render_wasm.cjs` accepts `--filter crt` for browser-free PNG evidence.
+
+![CRT glass filter preview](docs/images/crt-filter-mac-tiled.png)
+
 ### TRE reusable render core
 
 ABI 1.3 extracts TRE (Tiled Render Engine) beneath the Theme API. TRE provides

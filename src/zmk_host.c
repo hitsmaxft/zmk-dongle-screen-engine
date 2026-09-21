@@ -10,6 +10,7 @@
 #include <zmk/ble.h>
 #include <zmk/display.h>
 #include <zmk/dongle_theme/raster.h>
+#include <zmk/dongle_theme/filter.h>
 #include <zmk/dongle_theme/theme.h>
 #include <zmk/dongle_theme/transport.h>
 #include <zmk/endpoints.h>
@@ -149,6 +150,8 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   region_us+=draw_elapsed;region_count++;
   if(draw_elapsed>region_max_us)region_max_us=draw_elapsed;
   if(status!=DTE_STATUS_OK){transfer_failed=true;LOG_ERR("theme full render failed");return false;}
+  if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT))
+    dte_filter_apply(DTE_FILTER_CRT,&target);
   uint32_t changed[18]={0};
   int ncols=(dte_width()+15)/16,nrows=(dte_height()+15)/16;
   for(int ty=0;ty<nrows;ty++)for(int tx=0;tx<ncols;tx++){
@@ -238,6 +241,8 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
         LOG_ERR("theme strip render failed");
         break;
       }
+      if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT))
+        dte_filter_apply(DTE_FILTER_CRT,&target);
       uint32_t changed[18]={0};
       int tx0=rect->x/16,tx1=(rect->x+rect->width-1)/16;
       int ty0=y/16,ty1=(y+h-1)/16;
