@@ -34,8 +34,13 @@ def generate(lvgl, output):
     lines.append('static const struct dtr_font dtr_fonts[]={'+','.join('{'+f'{s},dtr_bits_{s},dtr_glyphs_{s}'+'}' for s in sizes)+'};')
     lines.append(f'#define DTR_FONT_COUNT {len(sizes)}')
     lines.append('static const int16_t dtr_sin[360]={'+','.join(str(round(math.sin(math.radians(n))*32767)) for n in range(360))+'};')
-    radii=[struct.unpack('<I',struct.pack('<f',math.sqrt(x*x+y*y)))[0] for y in range(128) for x in range(128)]
+    distances=[math.sqrt(x*x+y*y) for y in range(128) for x in range(128)]
+    radii=[struct.unpack('<I',struct.pack('<f',v))[0] for v in distances]
+    lines.append('#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)')
+    lines.append('static const uint16_t dtr_distance_q8[128*128]={'+','.join(str(round(v*256)) for v in distances)+'};')
+    lines.append('#else')
     lines.append('static const uint32_t dtr_distance_bits[128*128]={'+','.join(hex(v) for v in radii)+'};')
+    lines.append('#endif')
     # Exact original integer formulas, indexed by intensity and Bayer threshold.
     q5=[min(31,(v*31*16//255+t)//16) for v in range(256) for t in range(16)]
     # Progressive dispersed ranks on a toroidal 16x16 tile. Fixed tie-breaks;

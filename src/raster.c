@@ -233,7 +233,37 @@ void dtr_clear(int r, int g, int b) {
       if (dirty_pixel(x, y))
         fb[(y - OY) * STRIDE + x - OX] = color;
 }
+void dtr_clear_disc_background(int cx,int cy,int radius,
+                               int outer_r,int outer_g,int outer_b,
+                               int inner_r,int inner_g,int inner_b){
+  if(!fb||radius<0)return;
+  uint16_t outer=dtr_rgb(outer_r,outer_g,outer_b);
+  uint16_t inner=dtr_rgb(inner_r,inner_g,inner_b);
+  int left=dtr_clip.left>OX?dtr_clip.left:OX;
+  int top=dtr_clip.top>OY?dtr_clip.top:OY;
+  int right=dtr_clip.right<OX+TW?dtr_clip.right:OX+TW;
+  int bottom=dtr_clip.bottom<OY+TH?dtr_clip.bottom:OY+TH;
+  int radius2=radius*radius;
+  for(int y=top;y<bottom;y++){
+    int dy=y-cy,dx=left-cx,d2=dx*dx+dy*dy;
+    for(int x=left;x<right;){
+      int edge=((x>>4)+1)<<4;if(edge>right)edge=right;
+      if(!dirty_pixel(x,y)){
+        int jump=edge-x;d2+=jump*(2*dx+jump);dx+=jump;x=edge;continue;
+      }
+      fb[(y-OY)*STRIDE+x-OX]=d2<radius2?inner:outer;
+      d2+=2*dx+1;dx++;x++;
+    }
+  }
+}
 void dtr_hide_text(int hidden) { hide_text = hidden; }
+#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+static int distance_q8_xy(int x,int y){
+  unsigned ax=x<0?-x:x,ay=y<0?-y:y;
+  if(ax<128&&ay<128)return dtr_distance_q8[ay*128+ax];
+  return (int)(dtr_root((float)(x*x+y*y))*256+.5f);
+}
+#else
 static float distance_xy(int x, int y) {
 #if !defined(__ZEPHYR__) || defined(CONFIG_ZMK_DONGLE_SCREEN_DISTANCE_LUT)
   unsigned ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
@@ -247,6 +277,7 @@ static float distance_xy(int x, int y) {
 #endif
   return dtr_root((float)(x * x + y * y));
 }
+#endif
 float dtr_limit(float x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
 uint16_t dtr_rgb(int r, int g, int b) {
   return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
@@ -491,8 +522,14 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
   if (!fb || alpha <= 0)
     return;
   PROFILE_BEGIN;
+#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+  int sx=dtr_trig(first+90),sy=dtr_trig(first);
+  int ex=dtr_trig(last+90),ey=dtr_trig(last);
+  int inner_q8=(int)(inner*256+.5f),outer_q8=(int)(outer*256+.5f);
+#else
   float sx = dtr_trig(first + 90) / 32767.f, sy = dtr_trig(first) / 32767.f,
         ex = dtr_trig(last + 90) / 32767.f, ey = dtr_trig(last) / 32767.f;
+#endif
   int xa = cx - outer - 1, xb = cx + outer + 1, ya = cy - outer - 1,
       yb = cy + outer + 1;
   /* Bound the SECTOR, not its entire enclosing disc. Especially important for
@@ -579,9 +616,35 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
         x = cx + hole - 1;
         continue;
       }
-      float dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
+      int dx=x-cx,dy=y-cy;
+      float d2=(float)(dx*dx+dy*dy);
       if (d2 < (inner - 1) * (inner - 1) || d2 > (outer + 1) * (outer + 1))
         continue;
+#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+      int distance=distance_q8_xy(dx,dy);
+      int radial_in=distance-inner_q8+128;
+      int radial_out=outer_q8+128-distance;
+      if(radial_in<=0||radial_out<=0)continue;
+      if(radial_in>256)radial_in=256;if(radial_out>256)radial_out=256;
+      int coverage=(radial_in*radial_out*32767)>>16;
+      int64_t cross1=(int64_t)sx*dy-(int64_t)sy*dx;
+      int64_t cross2=(int64_t)dx*ey-(int64_t)dy*ex;
+      int c1=(int)(cross1+16384),c2=(int)(cross2+16384);
+      if(c1<0)c1=0;else if(c1>32767)c1=32767;
+      if(c2<0)c2=0;else if(c2>32767)c2=32767;
+      if(last-first<=180){
+        coverage=(coverage*c1+16384)>>15;
+        coverage=(coverage*c2+16384)>>15;
+      }
+      else{
+        int o1=(int)(-cross1+16384),o2=(int)(-cross2+16384);
+        if(o1<0)o1=0;else if(o1>32767)o1=32767;
+        if(o2<0)o2=0;else if(o2>32767)o2=32767;
+        int outside=(o1*o2+16384)>>15;
+        coverage=(coverage*(32767-outside)+16384)>>15;
+      }
+      int opacity=(coverage*alpha+16384)>>15;
+#else
       float d = distance_xy(x - cx, y - cy),
             aa = dtr_limit(d - inner + .5f) * dtr_limit(outer + .5f - d);
       float cross1 = sx * dy - sy * dx, cross2 = dx * ey - dy * ex;
@@ -590,6 +653,7 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
       else
         aa *= 1 - dtr_limit(-cross1 + .5f) * dtr_limit(-cross2 + .5f);
       int opacity = (int)(aa * alpha);
+#endif
       uint16_t *target = &fb[(y - OY) * STRIDE + x - OX];
       if (density_mask == 255 && alpha <= 255 && opacity == alpha &&
           *target == base)
@@ -704,11 +768,12 @@ static void fill_flat_disc(int cx,int cy,int radius,uint16_t color){
   }
 }
 static void metal_ring_cached(int cx, int cy, int R, int thickness,
-                              const struct dtr_metal_texel *atlas, size_t count) {
+                              const struct dtr_metal_texel *atlas, size_t count,
+                              int clear_disc) {
   if (!fb)
     return;
   PROFILE_BEGIN;
-  fill_flat_disc(cx,cy,R-thickness-1,dtr_rgb(8,10,12));
+  if(clear_disc)fill_flat_disc(cx,cy,R-thickness-1,dtr_rgb(8,10,12));
   /* Build-time coverage/grey; quantization remains at destination coordinates
    * so moving the ring preserves the fixed Bayer matrix without shimmer. */
   int first_dy=dtr_clip.top-cy,last_dy=dtr_clip.bottom-1-cy;
@@ -733,7 +798,11 @@ static void metal_ring_cached(int cx, int cy, int R, int thickness,
 }
 void dtr_metal_ring_cached(int cx, int cy, int R, int thickness,
                            const struct dtr_metal_texel *atlas, size_t count) {
-  metal_ring_cached(cx,cy,R,thickness,atlas,count);
+  metal_ring_cached(cx,cy,R,thickness,atlas,count,1);
+}
+void dtr_metal_rim_cached(int cx, int cy, int R, int thickness,
+                          const struct dtr_metal_texel *atlas, size_t count) {
+  metal_ring_cached(cx,cy,R,thickness,atlas,count,0);
 }
 
 static int sector_contains(int x,int y,int first,int last){
@@ -777,11 +846,13 @@ static int dtr_scale_offset(int value,int source_radius,int target_radius){
 
 static void metal_ring_scaled(int cx, int cy, int source_radius,
                               int target_radius, int thickness,
-                              const struct dtr_metal_texel *atlas, size_t count) {
+                              const struct dtr_metal_texel *atlas, size_t count,
+                              int clear_disc) {
   if (!fb)
     return;
   PROFILE_BEGIN;
-  fill_flat_disc(cx,cy,target_radius-thickness-1,dtr_rgb(8,10,12));
+  if(clear_disc)
+    fill_flat_disc(cx,cy,target_radius-thickness-1,dtr_rgb(8,10,12));
   int first_y=dtr_clip.top;if(first_y<OY)first_y=OY;
   int last_y=dtr_clip.bottom-1;if(last_y>OY+TH-1)last_y=OY+TH-1;
   size_t lo=0,hi=count;
@@ -802,7 +873,12 @@ static void metal_ring_scaled(int cx, int cy, int source_radius,
 void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
                            int thickness, const struct dtr_metal_texel *atlas,
                            size_t count) {
-  metal_ring_scaled(cx,cy,source_radius,target_radius,thickness,atlas,count);
+  metal_ring_scaled(cx,cy,source_radius,target_radius,thickness,atlas,count,1);
+}
+void dtr_metal_rim_scaled(int cx, int cy, int source_radius, int target_radius,
+                          int thickness, const struct dtr_metal_texel *atlas,
+                          size_t count) {
+  metal_ring_scaled(cx,cy,source_radius,target_radius,thickness,atlas,count,0);
 }
 void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
                                   int target_radius,int thickness,

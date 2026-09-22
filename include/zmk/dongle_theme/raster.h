@@ -26,6 +26,11 @@ void dtr_damage_arc(int cx, int cy, int inner, int outer, int first, int last);
 int dtr_damage_any(void);
 const uint32_t *dtr_dirty_tiles(void);
 void dtr_clear(int r, int g, int b);
+/* Clear damaged pixels in one pass, selecting inner/outer flat RGB565 colors
+ * by an integer disc boundary. */
+void dtr_clear_disc_background(int cx,int cy,int radius,
+                               int outer_r,int outer_g,int outer_b,
+                               int inner_r,int inner_g,int inner_b);
 void dtr_hide_text(int hidden);
 float dtr_limit(float x) __attribute__((const));
 float dtr_root(float x);
@@ -66,12 +71,17 @@ extern uint32_t
     dtr_profile_cycles[3]; /* ring / arcs / text, diagnostics only */
 void dtr_metal_ring_cached(int cx, int cy, int radius, int thickness,
                            const struct dtr_metal_texel *atlas, size_t count);
+void dtr_metal_rim_cached(int cx, int cy, int radius, int thickness,
+                          const struct dtr_metal_texel *atlas, size_t count);
 void dtr_metal_ring_cached_sector(int cx,int cy,int radius,int thickness,
                                   const struct dtr_metal_texel *atlas,
                                   size_t count,int first,int last);
 void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
                            int thickness, const struct dtr_metal_texel *atlas,
                            size_t count);
+void dtr_metal_rim_scaled(int cx, int cy, int source_radius, int target_radius,
+                          int thickness, const struct dtr_metal_texel *atlas,
+                          size_t count);
 void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
                                   int target_radius,int thickness,
                                   const struct dtr_metal_texel *atlas,

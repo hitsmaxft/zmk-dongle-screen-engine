@@ -30,11 +30,13 @@ def main(lvgl: Path) -> None:
         "touch": ["tests/touch.c", "src/engine.c", "src/filter.c", "src/raster.c", "src/ui.c", *tre],
         "filter": ["tests/filter.c", "src/filter.c"],
         "density": ["tests/density.c", "src/raster.c", *tre],
+        "density-fast": ["tests/density.c", "src/raster.c", *tre],
         "transport": ["tests/transport.c"],
     }
     for name, sources in suites.items():
         binary = output / name
-        subprocess.run([*common, *[str(engine / source) for source in sources],
+        flags = ["-DCONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED=1"] if name == "density-fast" else []
+        subprocess.run([*common, *flags, *[str(engine / source) for source in sources],
                         "-lm", "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
         print(f"{name}: PASS")

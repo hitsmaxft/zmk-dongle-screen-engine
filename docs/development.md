@@ -75,6 +75,12 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 此模式会在设备不足以实时完成时拉长墙钟时间，而不把中间相位全数丢弃；无限制
 档仍按所选 FPS 推进。连续两次点击必须各自完成往返，不得沿用前次 deadline。
 
+`CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED` 另将圆弧距离表压为Q8、边界覆盖
+改用Q15整数运算，以消除nRF52逐像素浮点除法；默认路径仍保留原float覆盖。
+性能预览须以 `DTE_PREVIEW_DEFINES=CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED=1`
+编译，输出manifest会记录该define。启用者须比较RGB565差异面积、最大通道误差
+及实机分项耗时，不得仅看浏览器WASM倍率。
+
 旧 raster Theme 迁移 ABI 1.3 时，可先用 `DTE_THEME_RASTER_ADAPTER` 保持视觉
 代码不变；其每个 firmware strip 均会重放 legacy renderer，故只可作正确性
 迁移门槛，不可作为高动态 Theme 的最终性能实现。WASM 硬件档位现复刻
