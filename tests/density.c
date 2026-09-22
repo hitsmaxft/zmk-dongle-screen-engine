@@ -29,5 +29,17 @@ int main(void) {
   for(int row=0;row<15;row++)for(int col=0;col<18;col++)
     tiles+=(damage[row]>>col)&1u;
   assert(tiles>0&&tiles<30);
+
+  for(int i=0;i<280*240;i++)pixels[i]=0x1234;
+  uint32_t canvas_damage[15]={0};canvas_damage[5]=1u<<6;
+  struct dte_canvas canvas=DTE_CANVAS_INIT;
+  canvas.scene_width=canvas.width=canvas.stride_pixels=280;
+  canvas.scene_height=canvas.height=240;
+  canvas.buffer_size=sizeof(pixels);canvas.pixels=pixels;
+  dtr_set_canvas_damage(canvas_damage,15);dtr_begin_canvas(&canvas);
+  dtr_clear(1,2,3);dtr_end_canvas();
+  uint16_t cleared=dtr_rgb(1,2,3);
+  for(int y=0;y<240;y++)for(int x=0;x<280;x++)
+    assert(pixels[y*280+x]==((x>=96&&x<112&&y>=80&&y<96)?cleared:0x1234));
   return 0;
 }

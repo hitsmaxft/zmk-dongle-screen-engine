@@ -16,6 +16,8 @@ uint32_t dtr_profile_cycles[3];
 static int W, H, OX, OY, TW, TH, STRIDE, region_override;
 static uint16_t *fb;
 static uint32_t damage[18];
+static const uint32_t *canvas_damage;
+static int canvas_damage_rows;
 static int damage_enabled, hide_text;
 static int density_mask = 255;
 static int density_pattern, density_cx, density_cy, density_inner,
@@ -33,8 +35,14 @@ void dtr_begin(uint16_t *pixels, int w, int h) {
   TW = w;
   TH = h;
   STRIDE = w;
+  canvas_damage = NULL;
+  canvas_damage_rows = 0;
   damage_enabled = hide_text = 0;
   dtr_clip = (struct dtr_clip_rect){0, 0, w, h};
+}
+void dtr_set_canvas_damage(const uint32_t *rows, int row_count) {
+  canvas_damage = rows;
+  canvas_damage_rows = rows && row_count > 0 ? row_count : 0;
 }
 void dtr_begin_canvas(const struct dte_canvas *canvas) {
   fb = canvas->pixels;
@@ -51,6 +59,8 @@ void dtr_begin_canvas(const struct dte_canvas *canvas) {
 }
 void dtr_end_canvas(void) {
   region_override = 0;
+  canvas_damage = NULL;
+  canvas_damage_rows = 0;
   fb = NULL;
   TW = TH = STRIDE = 0;
 }
@@ -96,6 +106,9 @@ int dtr_damage_any(void) {
   return 0;
 }
 static int dirty_pixel(int x, int y) {
+  if (region_override && canvas_damage)
+    return y >= 0 && (y >> 4) < canvas_damage_rows &&
+           (canvas_damage[y >> 4] & (1u << (x >> 4)));
   return region_override || !damage_enabled ||
          (damage[y >> 4] & (1u << (x >> 4)));
 }
@@ -114,11 +127,20 @@ static int dirty_rect(int x, int y, int w, int h) {
     h = H - y;
   if (w <= 0 || h <= 0)
     return 0;
-  if (region_override || !damage_enabled)
+  if (region_override && !canvas_damage)
     return 1;
+  if (!region_override && !damage_enabled)
+    return 1;
+  const uint32_t *rows = region_override ? canvas_damage : damage;
+  int row_count = region_override ? canvas_damage_rows : 18;
   uint32_t mask = ((1u << ((x + w - 1) / 16 + 1)) - 1) ^ ((1u << (x / 16)) - 1);
-  for (int row = y / 16; row <= (y + h - 1) / 16; row++)
-    if (damage[row] & mask)
+  int first = y / 16, last = (y + h - 1) / 16;
+  if (first < 0)
+    first = 0;
+  if (last >= row_count)
+    last = row_count - 1;
+  for (int row = first; row <= last; row++)
+    if (rows[row] & mask)
       return 1;
   return 0;
 }
@@ -190,6 +212,22 @@ void dtr_clear(int r, int g, int b) {
       top = dtr_clip.top > OY ? dtr_clip.top : OY;
   int right = dtr_clip.right < OX + TW ? dtr_clip.right : OX + TW;
   int bottom = dtr_clip.bottom < OY + TH ? dtr_clip.bottom : OY + TH;
+  if (region_override && canvas_damage) {
+    for (int y = top; y < bottom; y++) {
+      uint32_t bits = (y >> 4) < canvas_damage_rows ? canvas_damage[y >> 4] : 0;
+      for (int x = left; x < right;) {
+        int edge = ((x >> 4) + 1) << 4;
+        if (edge > right)
+          edge = right;
+        if (bits & (1u << (x >> 4)))
+          for (; x < edge; x++)
+            fb[(y - OY) * STRIDE + x - OX] = color;
+        else
+          x = edge;
+      }
+    }
+    return;
+  }
   for (int y = top; y < bottom; y++)
     for (int x = left; x < right; x++)
       if (dirty_pixel(x, y))
@@ -647,33 +685,30 @@ void dtr_metal_ring(int cx, int cy, int R, int thickness,
   PROFILE_END(0);
 }
 
-void dtr_metal_ring_cached(int cx, int cy, int R, int thickness,
-                           const struct dtr_metal_texel *atlas, size_t count) {
-  if (!fb)
-    return;
-  PROFILE_BEGIN;
-  int inner = R - thickness - 1;
-  /* Disc is flat; only its scanline endpoints need square roots. */
-  int top=cy-inner+1>dtr_clip.top?cy-inner+1:dtr_clip.top;
-  int bottom=cy+inner<dtr_clip.bottom?cy+inner:dtr_clip.bottom;
+static void fill_flat_disc(int cx,int cy,int radius,uint16_t color){
+  int top=cy-radius+1>dtr_clip.top?cy-radius+1:dtr_clip.top;
+  int bottom=cy+radius<dtr_clip.bottom?cy+radius:dtr_clip.bottom;
   if(top<OY)top=OY;if(bottom>OY+TH)bottom=OY+TH;
   if(top<0)top=0;if(bottom>H)bottom=H;
-  for (int y = top; y < bottom; y++) {
-    int dy=y-cy;
-    int edge = (int)dtr_root(inner * inner - dy * dy - 1);
-    int left = cx - edge, right = cx + edge;
+  for(int y=top;y<bottom;y++){
+    int dy=y-cy,edge=(int)dtr_root(radius*radius-dy*dy-1);
+    int left=cx-edge,right=cx+edge;
     if(left<dtr_clip.left)left=dtr_clip.left;
     if(right>=dtr_clip.right)right=dtr_clip.right-1;
     if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
     if(left<0)left=0;if(right>=W)right=W-1;
-    for (int x = left; x <= right; x++) {
-      if (!dirty_pixel(x, y)) {
-        x = ((x / 16) + 1) * 16 - 1;
-        continue;
-      }
-      dtr_pixel565(x, y, dtr_rgb(8, 10, 12));
+    for(int x=left;x<=right;){
+      if(!dirty_pixel(x,y)){x=((x>>4)+1)<<4;continue;}
+      fb[(y-OY)*STRIDE+x-OX]=color;x++;
     }
   }
+}
+static void metal_ring_cached(int cx, int cy, int R, int thickness,
+                              const struct dtr_metal_texel *atlas, size_t count) {
+  if (!fb)
+    return;
+  PROFILE_BEGIN;
+  fill_flat_disc(cx,cy,R-thickness-1,dtr_rgb(8,10,12));
   /* Build-time coverage/grey; quantization remains at destination coordinates
    * so moving the ring preserves the fixed Bayer matrix without shimmer. */
   int first_dy=dtr_clip.top-cy,last_dy=dtr_clip.bottom-1-cy;
@@ -695,6 +730,10 @@ void dtr_metal_ring_cached(int cx, int cy, int R, int thickness,
       dtr_pixel(x, y, t->grey, t->grey, t->grey, t->alpha);
   }
   PROFILE_END(0);
+}
+void dtr_metal_ring_cached(int cx, int cy, int R, int thickness,
+                           const struct dtr_metal_texel *atlas, size_t count) {
+  metal_ring_cached(cx,cy,R,thickness,atlas,count);
 }
 
 static int sector_contains(int x,int y,int first,int last){
@@ -736,29 +775,13 @@ static int dtr_scale_offset(int value,int source_radius,int target_radius){
                    (scaled-source_radius/2)/source_radius;
 }
 
-void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
-                           int thickness, const struct dtr_metal_texel *atlas,
-                           size_t count) {
+static void metal_ring_scaled(int cx, int cy, int source_radius,
+                              int target_radius, int thickness,
+                              const struct dtr_metal_texel *atlas, size_t count) {
   if (!fb)
     return;
   PROFILE_BEGIN;
-  int inner = target_radius - thickness - 1;
-  int top=cy-inner+1>dtr_clip.top?cy-inner+1:dtr_clip.top;
-  int bottom=cy+inner<dtr_clip.bottom?cy+inner:dtr_clip.bottom;
-  if(top<OY)top=OY;if(bottom>OY+TH)bottom=OY+TH;
-  if(top<0)top=0;if(bottom>H)bottom=H;
-  for (int y = top; y < bottom; y++) {
-    int dy=y-cy;
-    int edge = (int)dtr_root(inner * inner - dy * dy - 1);
-    int left = cx - edge, right = cx + edge;
-    if(left<dtr_clip.left)left=dtr_clip.left;
-    if(right>=dtr_clip.right)right=dtr_clip.right-1;
-    if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
-    if(left<0)left=0;if(right>=W)right=W-1;
-    for (int x = left; x <= right; x++)
-      if (dirty_pixel(x, y))
-        dtr_pixel565(x, y, dtr_rgb(8, 10, 12));
-  }
+  fill_flat_disc(cx,cy,target_radius-thickness-1,dtr_rgb(8,10,12));
   int first_y=dtr_clip.top;if(first_y<OY)first_y=OY;
   int last_y=dtr_clip.bottom-1;if(last_y>OY+TH-1)last_y=OY+TH-1;
   size_t lo=0,hi=count;
@@ -775,6 +798,11 @@ void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
     dtr_pixel(x, y, t->grey, t->grey, t->grey, t->alpha);
   }
   PROFILE_END(0);
+}
+void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
+                           int thickness, const struct dtr_metal_texel *atlas,
+                           size_t count) {
+  metal_ring_scaled(cx,cy,source_radius,target_radius,thickness,atlas,count);
 }
 void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
                                   int target_radius,int thickness,

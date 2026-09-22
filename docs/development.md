@@ -84,8 +84,9 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 
 连续动画与离散状态采用不同提交策略：低 RAM 路径以前者合并 dirty bounds 并按
 自上而下 strip 发送，后者使用 tile hash；可选 full framebuffer 路径则令 Theme
-整景绘制一次，再对最终 16×16 tile 判脏并打包传输。无 TE/vsync 的面板仍可能
-出现扫描缝，故不得宣称任一策略等同硬件换帧。
+对 dirty bounds 只绘制一次，同时把原始 16×16 tile mask 交给 rasterizer，避免
+大包围矩形内的静态中心区被清空、重画；其后再对最终 tile 判脏并打包传输。
+无 TE/vsync 的面板仍可能出现扫描缝，故不得宣称任一策略等同硬件换帧。
 
 ## Frame filters
 

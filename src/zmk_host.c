@@ -122,7 +122,8 @@ static void direct_lvgl_flush(lv_display_t *display, const lv_area_t *area,
   lv_display_flush_ready(display);
 }
 #if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER)
-static bool draw_full_region(uint32_t now,const struct dte_dirty_rect *rect){
+static bool draw_full_region(uint32_t now,const struct dte_dirty_rect *rect,
+                             const uint32_t *damage){
   int width=dte_width();
   struct dte_canvas target=DTE_CANVAS_INIT;
   target.scene_width=width;target.scene_height=dte_height();
@@ -131,8 +132,10 @@ static bool draw_full_region(uint32_t now,const struct dte_dirty_rect *rect){
   target.stride_pixels=width;
   target.buffer_size=((uint32_t)(rect->height-1)*width+rect->width)*2u;
   target.pixels=&full_pixels[rect->y*width+rect->x];
+  dtr_set_canvas_damage(damage,(dte_height()+15)/16);
   uint32_t draw_started=k_cycle_get_32();
   dte_result_t status=dte_draw(now,&target);
+  dtr_set_canvas_damage(NULL,0);
   uint32_t draw_elapsed=k_cyc_to_us_floor32(k_cycle_get_32()-draw_started);
   region_us+=draw_elapsed;region_count++;
   if(draw_elapsed>region_max_us)region_max_us=draw_elapsed;
@@ -150,7 +153,7 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   uint32_t candidates[18]={0},changed[18]={0};
   struct dte_dirty_rect full={0,0,dte_width(),dte_height()};
   if(force||!frame->dirty_count){
-    if(!draw_full_region(now,&full)){
+    if(!draw_full_region(now,&full,NULL)){
       transfer_failed=true;LOG_ERR("theme full render failed");return false;
     }
     dte_mark_rect_tiles(candidates,dte_width(),dte_height(),&full);
@@ -162,12 +165,16 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
       if(rect->x+rect->width>right)right=rect->x+rect->width;
       if(rect->y+rect->height>bottom)bottom=rect->y+rect->height;
     }
+    for(unsigned i=0;i<frame->dirty_count;i++){
+      const struct dte_rect *rect=&frame->dirty[i];
+      struct dte_dirty_rect dirty={rect->x,rect->y,rect->width,rect->height};
+      dte_mark_rect_tiles(candidates,dte_width(),dte_height(),&dirty);
+    }
     struct dte_dirty_rect region={left,top,right-left,bottom-top};
-    if(!draw_full_region(now,&region)){
+    if(!draw_full_region(now,&region,candidates)){
       transfer_failed=true;full_hash_valid=false;
       LOG_ERR("theme incremental render failed");return false;
     }
-    dte_mark_rect_tiles(candidates,dte_width(),dte_height(),&region);
   }
   int ncols=(dte_width()+15)/16,nrows=(dte_height()+15)/16;
   for(int ty=0;ty<nrows;ty++)for(int tx=0;tx<ncols;tx++){

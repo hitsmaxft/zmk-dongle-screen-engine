@@ -370,6 +370,12 @@ int dte_render(uint32_t now) {
     result.dirty[0]=(struct dte_rect){0,0,(uint16_t)width,(uint16_t)height};
   }
   int coherent=(result.flags&DTE_RENDER_CONTINUOUS)!=0;
+  uint32_t candidates[18]={0};
+  for(unsigned i=0;i<result.dirty_count;i++){
+    const struct dte_rect *r=&result.dirty[i];
+    struct dte_dirty_rect dirty={r->x,r->y,r->width,r->height};
+    dte_mark_rect_tiles(candidates,width,height,&dirty);
+  }
   if(coherent&&result.dirty_count>1){
     int left=width,top=height,right=0,bottom=0;
     for(unsigned i=0;i<result.dirty_count;i++){
@@ -397,7 +403,10 @@ int dte_render(uint32_t now) {
       canvas.width=r->width;canvas.height=h;canvas.stride_pixels=width;
       canvas.buffer_size=((uint32_t)(h-1)*width+r->width)*2u;
       canvas.pixels=preview_pixels+y*width+r->x;
-      if(dte_draw(now,&canvas)!=DTE_STATUS_OK)return 0;
+      dtr_set_canvas_damage(candidates,(height+15)/16);
+      dte_result_t draw_status=dte_draw(now,&canvas);
+      dtr_set_canvas_damage(NULL,0);
+      if(draw_status!=DTE_STATUS_OK)return 0;
       dte_filter_set_corner_radius(preview_filter_corner_radius);
       preview_filter_pixels+=dte_filter_apply((uint8_t)preview_filter,&canvas);
       preview_draw_calls++;

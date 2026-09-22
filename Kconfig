@@ -9,6 +9,14 @@ config ZMK_DONGLE_SCREEN_FPS
     range 1 60
     depends on ZMK_DONGLE_SCREEN_ENGINE
 
+config ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED
+    bool "Favor renderer throughput over minimum firmware size"
+    default n
+    depends on ZMK_DONGLE_SCREEN_ENGINE
+    help
+      Compile Engine raster and transport code with -O3. Enable only after
+      checking the final firmware map against the board's Flash budget.
+
 config ZMK_DONGLE_SCREEN_DONGLE_BATTERY
     bool "The dongle has a physical battery (otherwise show only split 0/1)"
     default n

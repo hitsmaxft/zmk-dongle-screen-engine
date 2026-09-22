@@ -9,7 +9,11 @@ if(CONFIG_ZMK_DONGLE_SCREEN_ENGINE)
     --lvgl ${ZEPHYR_LVGL_MODULE_DIR} --output ${CMAKE_CURRENT_BINARY_DIR}/dongle_raster_assets.h
     COMMAND_ERROR_IS_FATAL ANY)
   zephyr_library_include_directories(${CMAKE_CURRENT_BINARY_DIR})
-  zephyr_library_compile_options(-O2 -ffp-contract=off)
+  if(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+    zephyr_library_compile_options(-O3 -ffp-contract=off)
+  else()
+    zephyr_library_compile_options(-O2 -ffp-contract=off)
+  endif()
   zephyr_library_sources(
     src/engine.c
     src/filter.c

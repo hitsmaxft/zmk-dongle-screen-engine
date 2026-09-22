@@ -10,6 +10,9 @@ struct dtr_clip_rect {
 };
 extern struct dtr_clip_rect dtr_clip;
 void dtr_begin(uint16_t *pixels, int w, int h);
+/* Restrict the next canvas draw to scene-space 16x16 tiles. The caller owns
+ * rows until dtr_end_canvas(); NULL restores ordinary rectangular clipping. */
+void dtr_set_canvas_damage(const uint32_t *rows, int row_count);
 void dtr_begin_canvas(const struct dte_canvas *canvas);
 void dtr_end_canvas(void);
 int dtr_is_dry_run(void);
