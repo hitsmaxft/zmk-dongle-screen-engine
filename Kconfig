@@ -17,6 +17,16 @@ config ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED
       Compile Engine raster and transport code with -O3. Enable only after
       checking the final firmware map against the board's Flash budget.
 
+config ZMK_DONGLE_SCREEN_MAX_THROUGHPUT
+    bool "Immediately continue an over-budget animation"
+    default n
+    depends on ZMK_DONGLE_SCREEN_ENGINE
+    help
+      When a completed animation frame already exceeds the configured frame
+      period, yield the display queue for 1 ms and render the next frame
+      instead of waiting for another FPS grid boundary. This does not alter
+      Theme pixels or animation time and is intended for measured slow themes.
+
 config ZMK_DONGLE_SCREEN_DONGLE_BATTERY
     bool "The dongle has a physical battery (otherwise show only split 0/1)"
     default n

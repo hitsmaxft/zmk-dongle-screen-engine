@@ -81,6 +81,11 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 编译，输出manifest会记录该define。启用者须比较RGB565差异面积、最大通道误差
 及实机分项耗时，不得仅看浏览器WASM倍率。
 
+经实机确认单帧已超过deadline时，可另启
+`CONFIG_ZMK_DONGLE_SCREEN_MAX_THROUGHPUT`：host不再等待下一FPS网格，只以1ms
+让出display work queue后继续。此项只删除人为idle，不改变Theme时间或像素；仍须
+分别观察键盘输入、BLE及触摸延迟，不能以帧率提升掩盖队列饥饿。
+
 旧 raster Theme 迁移 ABI 1.3 时，可先用 `DTE_THEME_RASTER_ADAPTER` 保持视觉
 代码不变；其每个 firmware strip 均会重放 legacy renderer，故只可作正确性
 迁移门槛，不可作为高动态 Theme 的最终性能实现。WASM 硬件档位现复刻

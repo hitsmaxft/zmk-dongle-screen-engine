@@ -384,6 +384,12 @@ static void frame_work_cb(struct k_work *work) {
   }
   if (active) {
     uint32_t schedule_now=k_uptime_get_32();
+    uint32_t period=MAX(1,1000/CONFIG_ZMK_DONGLE_SCREEN_FPS);
+    if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_MAX_THROUGHPUT)&&
+       schedule_now-now>=period){
+      k_work_reschedule_for_queue(zmk_display_work_q(),&frame_work,K_MSEC(1));
+      return;
+    }
     deadline=(frame.flags&DTE_RENDER_DEADLINE_VALID)?frame.next_frame_at_ms:0;
     /* A slow frame must not trigger an immediate catch-up loop. Skip every
      * expired deadline and leave the display queue idle until the next grid;
