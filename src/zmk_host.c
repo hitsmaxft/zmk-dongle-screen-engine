@@ -294,7 +294,7 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
         if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         tile_hash[index]=hash;
       }
-      if(coherent){
+      if(coherent&&!IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_REGION_TILE_HASH)){
         int n=rect->width*h;
         if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int p=0;p<n;p++)
           transfer_pixels[p]=__builtin_bswap16(transfer_pixels[p]);

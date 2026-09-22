@@ -66,7 +66,9 @@ new bounds only for visible components that change. Validate reverse motion,
 all animation variants and clipped rendering against full redraws.
 
 The low-RAM host sends continuous animation as ordered strips over a merged
-bound; discrete updates use tile-hash packing. Full-framebuffer mode draws
+bound by default; discrete updates use tile-hash packing. Optional
+`CONFIG_ZMK_DONGLE_SCREEN_REGION_TILE_HASH` also packs continuous animation,
+trading fewer pixels for more LCD windows. Full-framebuffer mode draws
 the merged bound once, retains a raster tile mask and sends changed tiles.
 Neither path guarantees tear-free output without panel synchronization.
 

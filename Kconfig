@@ -78,13 +78,21 @@ config ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS
 config ZMK_DONGLE_SCREEN_STRIP_PIXELS
     int "Maximum RGB565 pixels in the firmware render strip"
     default 4480
-    range 4480 17920
+    range 4480 31360
     depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
     help
       Bounds static render RAM independently of display area. 4480 pixels are
-      sixteen full rows at 280 pixels wide and require 8960 bytes; the
-      16-row minimum keeps region hashes and transfer tiles aligned. 17920
-      pixels hold 64 rows (35840 bytes), below nRF EasyDMA's 65535-byte limit.
+      sixteen full rows at 280 pixels wide and require 8960 bytes. 31360
+      pixels hold 112 rows (62720 bytes), below nRF EasyDMA's 65535-byte limit.
+
+config ZMK_DONGLE_SCREEN_REGION_TILE_HASH
+    bool "Pack changed tiles during continuous region animation"
+    default n
+    depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565 && !ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER
+    help
+      Hash and pack changed 16x16 tiles for continuous region animation.
+      This lowers payload but creates more LCD windows. Disabled mode sends
+      each rendered strip in order for stronger spatial coherence.
 
 config ZMK_DONGLE_SCREEN_STARTUP_DELAY_MS
     int "Black screen settling time before the first theme frame (ms)"
