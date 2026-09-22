@@ -41,7 +41,7 @@ static int corner_radius(int short_side) {
     int radius = configured_corner_radius;
     return radius * 2 > short_side ? short_side / 2 : radius;
   }
-#if defined(__ZEPHYR__)
+#if defined(__ZEPHYR__) && defined(CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS)
   int radius = CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS;
 #else
   int radius = scale(24, short_side);
