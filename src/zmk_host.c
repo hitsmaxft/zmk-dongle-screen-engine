@@ -122,27 +122,50 @@ static void direct_lvgl_flush(lv_display_t *display, const lv_area_t *area,
   lv_display_flush_ready(display);
 }
 #if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER)
-static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
-  if(!transfer_failed&&!frame->dirty_count&&
-     !(frame->flags&DTE_RENDER_FRAME_CHANGED))return false;
-  bool force=transfer_failed||!full_hash_valid;
-  const struct device *disp=DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+static bool draw_full_region(uint32_t now,const struct dte_dirty_rect *rect){
+  int width=dte_width();
   struct dte_canvas target=DTE_CANVAS_INIT;
-  target.scene_width=dte_width();target.scene_height=dte_height();
-  target.width=dte_width();target.height=dte_height();target.stride_pixels=dte_width();
-  target.buffer_size=(uint32_t)dte_width()*dte_height()*2u;target.pixels=full_pixels;
-  transfer_failed=false;
+  target.scene_width=width;target.scene_height=dte_height();
+  target.origin_x=rect->x;target.origin_y=rect->y;
+  target.width=rect->width;target.height=rect->height;
+  target.stride_pixels=width;
+  target.buffer_size=((uint32_t)(rect->height-1)*width+rect->width)*2u;
+  target.pixels=&full_pixels[rect->y*width+rect->x];
   uint32_t draw_started=k_cycle_get_32();
   dte_result_t status=dte_draw(now,&target);
   uint32_t draw_elapsed=k_cyc_to_us_floor32(k_cycle_get_32()-draw_started);
   region_us+=draw_elapsed;region_count++;
   if(draw_elapsed>region_max_us)region_max_us=draw_elapsed;
-  if(status!=DTE_STATUS_OK){transfer_failed=true;LOG_ERR("theme full render failed");return false;}
+  if(status!=DTE_STATUS_OK)return false;
   if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT))
     dte_filter_apply(DTE_FILTER_CRT,&target);
-  uint32_t changed[18]={0};
+  return true;
+}
+static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
+  if(!transfer_failed&&!frame->dirty_count&&
+     !(frame->flags&DTE_RENDER_FRAME_CHANGED))return false;
+  bool force=transfer_failed||!full_hash_valid;
+  const struct device *disp=DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+  transfer_failed=false;
+  uint32_t candidates[18]={0},changed[18]={0};
+  struct dte_dirty_rect full={0,0,dte_width(),dte_height()};
+  if(force||!frame->dirty_count){
+    if(!draw_full_region(now,&full)){
+      transfer_failed=true;LOG_ERR("theme full render failed");return false;
+    }
+    dte_mark_rect_tiles(candidates,dte_width(),dte_height(),&full);
+  }else for(unsigned i=0;i<frame->dirty_count;i++){
+    struct dte_dirty_rect region={frame->dirty[i].x,frame->dirty[i].y,
+      frame->dirty[i].width,frame->dirty[i].height};
+    if(!draw_full_region(now,&region)){
+      transfer_failed=true;full_hash_valid=false;
+      LOG_ERR("theme incremental render failed");return false;
+    }
+    dte_mark_rect_tiles(candidates,dte_width(),dte_height(),&region);
+  }
   int ncols=(dte_width()+15)/16,nrows=(dte_height()+15)/16;
   for(int ty=0;ty<nrows;ty++)for(int tx=0;tx<ncols;tx++){
+    if(!(candidates[ty]&(1u<<tx)))continue;
     uint32_t hash=dte_hash_rgb565_tile(full_pixels,dte_width(),0,0,tx*16,ty*16,
                                        dte_width(),dte_height());
     int index=ty*18+tx;

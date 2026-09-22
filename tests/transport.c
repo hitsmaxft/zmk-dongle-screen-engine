@@ -3,6 +3,13 @@
 #include <string.h>
 #include <zmk/dongle_theme/transport.h>
 int main(void) {
+  uint32_t marked[18]={0};
+  struct dte_dirty_rect marked_rect={137,64,10,17};
+  dte_mark_rect_tiles(marked,280,240,&marked_rect);
+  assert(marked[4]==((1u<<8)|(1u<<9)));
+  assert(marked[5]==((1u<<8)|(1u<<9)));
+  for(int row=0;row<18;row++)if(row!=4&&row!=5)assert(marked[row]==0);
+
   struct dte_dirty_rect tile={128,64,16,16},layer={0,64,137,75},clipped;
   assert(dte_intersect_dirty_rect(&tile,&layer,&clipped));
   assert(clipped.x==128&&clipped.y==64&&clipped.width==9&&clipped.height==16);

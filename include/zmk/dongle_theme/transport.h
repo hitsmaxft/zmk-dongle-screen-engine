@@ -4,6 +4,24 @@
 #include <stdint.h>
 struct dte_dirty_rect {int x,y,width,height;};
 
+/* Mark every 16px scene tile intersecting a validated rectangle. */
+static inline void dte_mark_rect_tiles(uint32_t *rows, int scene_width,
+                                       int scene_height,
+                                       const struct dte_dirty_rect *rect) {
+  if (!rows || !rect || rect->width <= 0 || rect->height <= 0)
+    return;
+  int left = rect->x < 0 ? 0 : rect->x;
+  int top = rect->y < 0 ? 0 : rect->y;
+  int right = rect->x + rect->width;
+  int bottom = rect->y + rect->height;
+  if (right > scene_width) right = scene_width;
+  if (bottom > scene_height) bottom = scene_height;
+  if (right <= left || bottom <= top) return;
+  int tx0 = left / 16, tx1 = (right - 1) / 16;
+  uint32_t mask = ((1u << (tx1 + 1)) - 1u) ^ ((1u << tx0) - 1u);
+  for (int ty = top / 16; ty <= (bottom - 1) / 16; ty++) rows[ty] |= mask;
+}
+
 /* Clip a tile/packet rectangle to the pixels actually present in a render
  * strip.  Region edges need not be 16px aligned. */
 static inline bool dte_intersect_dirty_rect(const struct dte_dirty_rect *a,
