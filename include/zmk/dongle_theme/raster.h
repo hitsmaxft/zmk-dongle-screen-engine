@@ -66,6 +66,10 @@ void dtr_metal_ring_cached(int cx, int cy, int radius, int thickness,
 void dtr_metal_ring_cached_sector(int cx,int cy,int radius,int thickness,
                                   const struct dtr_metal_texel *atlas,
                                   size_t count,int first,int last);
+void dtr_metal_ring_indexed_sector(int cx,int cy,
+                                   const struct dtr_metal_texel *atlas,
+                                   const uint16_t *offsets,
+                                   const uint16_t *indices,int sector);
 void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
                            int thickness, const struct dtr_metal_texel *atlas,
                            size_t count);
@@ -73,3 +77,8 @@ void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
                                   int target_radius,int thickness,
                                   const struct dtr_metal_texel *atlas,
                                   size_t count,int first,int last);
+void dtr_metal_ring_scaled_indexed_sector(int cx,int cy,int source_radius,
+                                          int target_radius,
+                                          const struct dtr_metal_texel *atlas,
+                                          const uint16_t *offsets,
+                                          const uint16_t *indices,int sector);
