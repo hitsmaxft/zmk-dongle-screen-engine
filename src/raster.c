@@ -730,26 +730,6 @@ void dtr_metal_ring_cached_sector(int cx,int cy,int R,int thickness,
   }
   PROFILE_END(0);
 }
-void dtr_metal_ring_indexed_sector(int cx,int cy,
-                                   const struct dtr_metal_texel *atlas,
-                                   const uint16_t *offsets,
-                                   const uint16_t *indices,int sector){
-  if(!fb||!atlas||!offsets||!indices||sector<0||sector>=24)return;
-  PROFILE_BEGIN;
-  for(uint16_t p=offsets[sector];p<offsets[sector+1];p++){
-    const struct dtr_metal_texel *t=&atlas[indices[p]];
-    int x=cx+t->x,y=cy+t->y;
-    if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||
-       y>=dtr_clip.bottom||x<OX||x>=OX+TW||y<OY||y>=OY+TH||
-       !dirty_pixel(x,y))continue;
-    if(t->alpha==255&&density_mask==255){
-      static const uint8_t bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
-      dtr_pixel565(x,y,dtr_grey[t->grey*16+bayer[(y&3)*4+(x&3)]]);
-    }else dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
-  }
-  PROFILE_END(0);
-}
-
 static int dtr_scale_offset(int value,int source_radius,int target_radius){
   int scaled=value*target_radius;
   return scaled>=0?(scaled+source_radius/2)/source_radius:
@@ -812,24 +792,6 @@ void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
        y>=dtr_clip.bottom||x<OX||x>=OX+TW||y<OY||y>=OY+TH||
        !dirty_pixel(x,y))continue;
     if(!sector_contains(ox,oy,first,last))continue;
-    dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
-  }
-  PROFILE_END(0);
-}
-void dtr_metal_ring_scaled_indexed_sector(int cx,int cy,int source_radius,
-                                          int target_radius,
-                                          const struct dtr_metal_texel *atlas,
-                                          const uint16_t *offsets,
-                                          const uint16_t *indices,int sector){
-  if(!fb||!atlas||!offsets||!indices||sector<0||sector>=24)return;
-  PROFILE_BEGIN;
-  for(uint16_t p=offsets[sector];p<offsets[sector+1];p++){
-    const struct dtr_metal_texel *t=&atlas[indices[p]];
-    int x=cx+dtr_scale_offset(t->x,source_radius,target_radius);
-    int y=cy+dtr_scale_offset(t->y,source_radius,target_radius);
-    if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||
-       y>=dtr_clip.bottom||x<OX||x>=OX+TW||y<OY||y>=OY+TH||
-       !dirty_pixel(x,y))continue;
     dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
   }
   PROFILE_END(0);

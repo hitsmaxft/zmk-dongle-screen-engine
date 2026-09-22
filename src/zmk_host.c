@@ -154,9 +154,15 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
       transfer_failed=true;LOG_ERR("theme full render failed");return false;
     }
     dte_mark_rect_tiles(candidates,dte_width(),dte_height(),&full);
-  }else for(unsigned i=0;i<frame->dirty_count;i++){
-    struct dte_dirty_rect region={frame->dirty[i].x,frame->dirty[i].y,
-      frame->dirty[i].width,frame->dirty[i].height};
+  }else{
+    int left=dte_width(),top=dte_height(),right=0,bottom=0;
+    for(unsigned i=0;i<frame->dirty_count;i++){
+      const struct dte_rect *rect=&frame->dirty[i];
+      if(rect->x<left)left=rect->x;if(rect->y<top)top=rect->y;
+      if(rect->x+rect->width>right)right=rect->x+rect->width;
+      if(rect->y+rect->height>bottom)bottom=rect->y+rect->height;
+    }
+    struct dte_dirty_rect region={left,top,right-left,bottom-top};
     if(!draw_full_region(now,&region)){
       transfer_failed=true;full_hash_valid=false;
       LOG_ERR("theme incremental render failed");return false;
