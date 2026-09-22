@@ -150,7 +150,7 @@ or a timestamp not prepared by `dte_frame()`.
 The ZMK host subdivides dirty rectangles into at most
 `ZMK_DONGLE_SCREEN_STRIP_PIXELS` and synchronously passes each strip to the
 display driver. The default is 4,480 RGB565 pixels, or 8,960 bytes. Neither the
-Engine nor LVGL owns a full animation framebuffer in firmware.
+Engine nor LVGL owns a full animation framebuffer in this strip mode.
 
 Before each strip is sent, the host hashes its 16×16 RGB565 output tiles against
 the last successfully produced tile hash. Only changed tiles are packed into
@@ -167,11 +167,11 @@ temporally scattered tile writes on panels without a TE/vsync signal. Themes
 still need realistic damage bounds; this policy improves coherence but cannot
 make an SPI update atomic.
 
-When `ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER` is enabled, the Theme draws the full
-scene once. The host then hashes the final 16x16 RGB565 tiles and copies only
-changed tiles into the bounded 2,048-pixel transfer scratch. A failed display
-write forces every tile to be sent on the next eligible frame. Byte swapping is
-performed on transfer scratch, never in place on the retained framebuffer.
+With `ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER`, the host retains the scene and draws
+one merged dirty bound per frame. Raster drawing uses the original tile mask
+to preserve unchanged pixels within that bound. Changed tiles are copied into
+the 2,048-pixel transfer scratch. Initialization or a failed write forces a full
+repaint. Byte swapping occurs in scratch, not in the retained framebuffer.
 
 ## Frame filters
 
@@ -183,7 +183,7 @@ Theme draw -> frame filter -> tile hash -> wire conversion -> display
 ```
 
 The built-in CRT filter is selected in firmware with
-`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT`; its physical inner-corner radius is
+`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT`; its filter inner-corner radius is
 configured by `CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS` (default
 24 px, clamped to half the short side). Native/WASM tools use
 `dte_preview_set_filter(DTE_FILTER_CRT)` and
@@ -240,7 +240,7 @@ probe before producing the final HTML. The probe covers:
 - valid region draw and insufficient-buffer rejection;
 - exact native/WASM result equality.
 
-`scripts/test_preview.py` adds 81-frame replay over three viewports, touch and
+`scripts/test_preview.py` adds 90-frame replay over three viewports, touch and
 long-press lifecycle checks, deterministic repeat, and full RGB565 hash parity.
 This validates software behavior; physical SPI timing and panel output remain
 separate hardware gates.

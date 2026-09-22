@@ -6,9 +6,8 @@ from the linked visual theme. Theme code stays in its own Zephyr module and
 defines one static ABI 1.3 descriptor.
 
 Current development version: **1.3.0** with Theme ABI **1.3** and TRE ABI
-**1.0**. Firmware renders only requested RGB565 regions into a bounded strip
-buffer. Native and WASM previews assemble a complete framebuffer for inspection
-and deterministic replay.
+**1.0**. Firmware supports bounded RGB565 strips or an optional retained full
+framebuffer. Native and WASM previews assemble pixels for inspection and replay.
 
 This repository contains the engine only. It does not contain downstream
 themes, artwork, generated theme atlases, or product-specific animation labs.
@@ -38,21 +37,11 @@ The parity replay compares native and WASM RGB565 hashes across three display
 sizes. It also verifies long-press de-duplication and that fixed spatial Bayer
 dithering does not shimmer between stationary frames.
 
-The nRF52840 preset replays ABI 1.3 exactly as firmware does: frame planning,
-dirty regions, bounded strips, repeated region draw calls and tile-hash-filtered
-payload. It reports ABI rectangles and strip draws alongside bytes, so a
-compatibility adapter or a conservative damage declaration cannot appear faster
-in WASM than it will on the device.
-
-Continuous animation is presented as ordered top-to-bottom strips over one
-conservative dirty region; discrete state updates retain tile-hash packing.
-This keeps one animation frame spatially coherent on displays without TE while
-still minimizing SPI traffic for layers, batteries and WPM.
-
-The Theme still draws one complete frame, but the host hashes 16x16 tiles and
-submits only changed packed rectangles. Its static render storage is 139,792
-bytes: 134,400 bytes of RGB565 pixels, 4,096 bytes of transfer scratch and
-1,296 bytes of hashes.
+The nRF52840 preset estimates CPU and SPI budgets while replaying the strip
+render path. It reports dirty regions, draw calls and payload bytes. It does
+not model every firmware mode or physical scanout; calibrate it against device
+logs. Manual interaction playback can extend animation time to show intermediate
+phases. See [performance measurement](docs/development.md#animation-and-performance).
 
 ### Optional CRT glass filter
 
@@ -82,20 +71,10 @@ It has no ZMK or theme-state dependencies and is intended to be shared by Theme
 1.x, the `.zds` runtime and later frontends. Existing `dtr_*`/`dte_ui_*` calls
 remain compatibility and effects helpers. See the [API manual](docs/api.md).
 
-The preview shell also contains a hardware-budget simulator. Its nRF52840 +
-ST7789 preset uses the board's 32 MHz SPI ceiling, direct RGB565 dirty row
-bands, the ABI 1.3 budget target of 24 FPS, and the firmware's two 280 x 8
-RGB565 strip buffers (8,960 bytes). It reports the nRF52840 capacity of 256 KiB
-SRAM and 1 MiB Flash, not theme-specific linked usage; pass a Zephyr map to the
-preview build action for those measured figures. The adjustable CPU slowdown
-remains an estimate until calibrated from current on-device timing. The engine
-accepts arbitrary target FPS and animation duration, while each dongle build
-chooses its own target. Unlimited
-and custom modes permit A/B comparison. The shell reports logical, hardware
-budget and browser-observed FPS separately, together with dirty tiles,
-estimated render/transfer time, dirty-area ratio, transfer bytes/rate, SPI bus
-utilization, buffer RAM and dropped frames. This is a relative engineering
-model, not a substitute for on-device timing.
+The preset uses 24 FPS, 32 MHz SPI and one 4,480-pixel strip (8,960 bytes).
+Its 256 KiB SRAM and 1 MiB Flash figures are device capacities, not linked
+usage. Supply a Zephyr map for firmware measurements. Custom and unlimited
+profiles support comparison; logical, estimated and browser FPS are distinct.
 
 ![English WASM preview showing the engine controls](docs/images/wasm-preview-en.png)
 
@@ -109,11 +88,10 @@ native tests, WASM and firmware can replay the same timeline deterministically.
 Optional animation selection, duration and forced-redraw hooks are available to
 preview/settings adapters without making the engine interpret theme semantics.
 
-The configured 60Hz value is a logical deadline, not a claim that every SPI
-panel can present 60 physical frames per second. Retained tile damage, packed
-rectangles and direct RGB565 strips let themes trade memory, draw cost and
-transport cost explicitly. The default 4,480-pixel strip occupies 8,960 bytes,
-instead of a 134,400-byte 280×240 framebuffer in firmware.
+The default deadline rate is 60 FPS; builds may select 1–60 FPS. Actual
+throughput depends on drawing and transport. Full-framebuffer mode retains
+134,400 pixel bytes, draws merged dirty bounds once and hashes changed tiles.
+Neither mode guarantees tear-free output without panel synchronization.
 
 ### Touch normalization
 
@@ -228,7 +206,7 @@ frame hashes, long-press de-duplication and stable spatial dithering.
 `build_preview.py` first runs a fast native/WASM ABI gate, so it will not emit a
 usable HTML preview when versions, required-prefix handling, dirty bounds,
 frame/draw pairing or region capacity checks disagree. `test_preview.py` then
-runs the longer 81-frame, three-viewport parity replay.
+runs the longer 90-frame, three-viewport parity replay.
 
 Themes with `variants` may also declare `common_sources`,
 `profile_variants`, and localized-independent `variant_display_names`. Build
