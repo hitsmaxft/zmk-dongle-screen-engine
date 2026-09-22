@@ -468,8 +468,22 @@ void dtr_spindle(int cx, int cy, int inner, int outer, int angle,
   if (!dirty_rect(xa, ya, xb - xa + 1, yb - ya + 1))
     return;
   float length = outer - inner;
-  for (int y = ya; y <= yb; y++)
-    for (int x = xa; x <= xb; x++) {
+  /* The rotated spindle occupies a narrow strip, not its enclosing rectangle.
+   * Bound each scanline by the maximum possible perpendicular coverage. Keep
+   * the original coverage arithmetic below, including endpoint antialiasing. */
+  float abs_uy = uy < 0 ? -uy : uy;
+  float slope = abs_uy > .01f ? ux / uy : 0;
+  float reach = abs_uy > .01f ? (half_width + .85f) / abs_uy : 0;
+  for (int y = ya; y <= yb; y++) {
+    int left = xa, right = xb;
+    if (abs_uy > .01f) {
+      float center = cx + (y - cy) * slope;
+      int a = (int)(center - reach) - 2;
+      int bnd = (int)(center + reach) + 2;
+      if (left < a) left = a;
+      if (right > bnd) right = bnd;
+    }
+    for (int x = left; x <= right; x++) {
       if (!dirty_pixel(x, y)) {
         x = ((x / 16) + 1) * 16 - 1;
         continue;
@@ -487,6 +501,7 @@ void dtr_spindle(int cx, int cy, int inner, int outer, int angle,
       if (coverage)
         dtr_pixel(x, y, r, g, b, coverage);
     }
+  }
 }
 /* Analytic annular sector: smooth circular edges without dtr_radial-spoke
  * seams. */
@@ -607,7 +622,14 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
     int dy_i = y - cy;
     float hole2 = (inner - 1) * (inner - 1) - dy_i * dy_i;
     int hole = hole2 > 0 ? (int)dtr_root(hole2) : 0;
-    for (int x = xa; x <= xb; x++) {
+    /* Cull the two corners outside the circle before visiting pixels. The
+     * extra pixel guards rounding; the old radial predicate stays decisive. */
+    float edge2 = (outer + 1) * (outer + 1) - dy_i * dy_i;
+    if (edge2 < 0) continue;
+    int edge = (int)dtr_root(edge2) + 1;
+    int left = xa > cx - edge ? xa : cx - edge;
+    int right = xb < cx + edge ? xb : cx + edge;
+    for (int x = left; x <= right; x++) {
       if (!dirty_pixel(x, y)) {
         x = ((x / 16) + 1) * 16 - 1;
         continue;
@@ -621,14 +643,19 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
       if (d2 < (inner - 1) * (inner - 1) || d2 > (outer + 1) * (outer + 1))
         continue;
 #if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+      int64_t cross1=(int64_t)sx*dy-(int64_t)sy*dx;
+      int64_t cross2=(int64_t)dx*ey-(int64_t)dy*ex;
+      /* Outside the angular AA fringe, coverage quantizes to zero. Reject
+       * before distance lookup and the radial/coverage products. */
+      if (last-first<=180) {
+        if (cross1<=-16384 || cross2<=-16384) continue;
+      } else if (cross1<=-16384 && cross2<=-16384) continue;
       int distance=distance_q8_xy(dx,dy);
       int radial_in=distance-inner_q8+128;
       int radial_out=outer_q8+128-distance;
       if(radial_in<=0||radial_out<=0)continue;
       if(radial_in>256)radial_in=256;if(radial_out>256)radial_out=256;
       int coverage=(radial_in*radial_out*32767)>>16;
-      int64_t cross1=(int64_t)sx*dy-(int64_t)sy*dx;
-      int64_t cross2=(int64_t)dx*ey-(int64_t)dy*ex;
       int c1=(int)(cross1+16384),c2=(int)(cross2+16384);
       if(c1<0)c1=0;else if(c1>32767)c1=32767;
       if(c2<0)c2=0;else if(c2>32767)c2=32767;
