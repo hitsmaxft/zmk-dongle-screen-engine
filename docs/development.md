@@ -91,7 +91,7 @@ Engine filter 必须位于 Theme draw 之后、tile hash 之前，并使用 scen
 `CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT` 开启，
 `CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS` 指定固件物理圆角；WASM
 参数区可即时切换滤镜及圆角半径，且不得重置 Theme 时间、输入或 locale。默认
-屏幕遮罩为不涉品牌的 1.69 英寸圆角屏（R43），其仅裁切浏览器呈现。
+屏幕遮罩为不涉品牌的 1.69 英寸圆角屏（R60），其仅裁切浏览器呈现。
 
 直接生成滤镜证据，不须启浏览器：
 
