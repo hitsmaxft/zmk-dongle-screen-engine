@@ -67,7 +67,7 @@ output and ABI 1.3 descriptors are unchanged.
 The WASM preview exposes the same filter under **Animation parameters → Frame
 filter** and a live corner-radius slider. These controls redraw without
 resetting Theme time, input or locale. The default physical mask is a generic
-1.69-inch rounded screen at R60; it affects only browser presentation.
+1.69-inch rounded screen at R43; it affects only browser presentation.
 `render_wasm.cjs` accepts `--filter crt --filter-radius 43` for browser-free
 PNG evidence.
 

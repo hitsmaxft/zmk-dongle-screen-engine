@@ -80,8 +80,8 @@ uint32_t dte_filter_apply(uint8_t type, const struct dte_canvas *canvas) {
   int short_side = width < height ? width : height;
   int side = scale(16, short_side), top = scale(12, short_side);
   int bottom = scale(18, short_side), radius = corner_radius(short_side);
-  int highlight_y0 = scale(4, short_side), highlight_y1 = scale(6, short_side);
-  int highlight_inset = scale(16, short_side);
+  int highlight_y0 = scale(8, short_side), highlight_y1 = scale(17, short_side);
+  int highlight_inset = scale(18, short_side);
   uint16_t highlight = (uint16_t)(((0xa8u >> 3) << 11) |
                                   ((0xffu >> 2) << 5) | (0xd0u >> 3));
   uint32_t inspected = 0;
@@ -91,11 +91,13 @@ uint32_t dte_filter_apply(uint8_t type, const struct dte_canvas *canvas) {
       int x = canvas->origin_x + lx;
       bool in_highlight = y >= highlight_y0 && y <= highlight_y1 &&
                           x >= highlight_inset && x < width - highlight_inset;
+      bool in_side_glint = (x == side || x == width - side - 1) &&
+                            y >= radius / 2 && y < height - radius / 2;
       bool in_edge = x < side || x >= width - side || y < top ||
                      y >= height - bottom;
       bool in_corner = (x < radius || x >= width - radius) &&
                        (y < radius || y >= height - radius);
-      if (!in_edge && !in_corner && !in_highlight) continue;
+      if (!in_edge && !in_corner && !in_highlight && !in_side_glint) continue;
       inspected++;
       uint16_t *pixel = &canvas->pixels[ly * canvas->stride_pixels + lx];
       if (in_corner) {
@@ -114,10 +116,26 @@ uint32_t dte_filter_apply(uint8_t type, const struct dte_canvas *canvas) {
         int from_end = x - highlight_inset;
         int other = width - highlight_inset - 1 - x;
         if (other < from_end) from_end = other;
-        int ramp = scale(32, short_side);
-        uint8_t light_opa = (uint8_t)(42 * (from_end < ramp ? from_end : ramp) /
+        int ramp = scale(36, short_side);
+        int vertical = highlight_y1 - y + 1;
+        uint8_t light_opa = (uint8_t)(92 * (from_end < ramp ? from_end : ramp) /
                                       (ramp ? ramp : 1));
+        light_opa = (uint8_t)(light_opa * vertical /
+                              (highlight_y1 - highlight_y0 + 1));
         if (span > 0 && light_opa) *pixel = mix565(*pixel, highlight, light_opa);
+      }
+      if (in_side_glint) *pixel = mix565(*pixel, highlight, 42);
+      if (in_corner) {
+        int cx = x < radius ? radius - 1 : width - radius;
+        int cy = y < radius ? radius - 1 : height - radius;
+        int dx = x - cx, dy = y - cy;
+        int edge_band = radius * 6;
+        int inside = (radius - 1) * (radius - 1) - dx * dx - dy * dy;
+        if (inside >= 0 && inside < edge_band) {
+          int strength = (edge_band - inside) * (y < height / 2 ? 96 : 54) /
+                         edge_band;
+          *pixel = mix565(*pixel, highlight, (uint8_t)strength);
+        }
       }
     }
   }
