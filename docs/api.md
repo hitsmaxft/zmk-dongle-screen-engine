@@ -233,6 +233,11 @@ bands; other builds use the individual-arc path. The call allocates no buffer.
 `dtr_clear_disc_background()` restores a two-color disc background as clipped
 scanline spans. It respects retained tile damage and canvas origin/stride.
 
+Primitive implementations may call an internal unchecked blend after they
+have validated clip, canvas and damage bounds. Public pixel APIs always retain
+their checks. This avoids repeating per-pixel predicates inside bounded spans
+without changing coverage, density or RGB565 quantization.
+
 `zmk/dongle_theme/ui.h` provides allocation-free sprite and small UI helpers.
 Theme palettes, layouts, animation policy, fonts and asset payloads remain in
 the Theme module.

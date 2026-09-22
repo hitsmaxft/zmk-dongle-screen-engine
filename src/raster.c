@@ -3,12 +3,13 @@
 #include <tre/render.h>
 #include <zmk/dongle_theme/metal_sample.h>
 #include <zmk/dongle_theme/raster.h>
-uint32_t dtr_profile_cycles[3];
+uint32_t dtr_profile_cycles[5],dtr_profile_calls[5];
 #if defined(__ZEPHYR__) && defined(CONFIG_LOG)
 #include <zephyr/kernel.h>
 #define PROFILE_BEGIN uint32_t profile_start = k_cycle_get_32()
 #define PROFILE_END(i)                                                         \
-  (dtr_profile_cycles[i] += k_cycle_get_32() - profile_start)
+  do { dtr_profile_cycles[i] += k_cycle_get_32() - profile_start;              \
+       dtr_profile_calls[i]++; } while (0)
 #else
 #define PROFILE_BEGIN
 #define PROFILE_END(i)
@@ -226,6 +227,7 @@ static void fill_span(int left,int right,int y,uint16_t color) {
 void dtr_clear(int r, int g, int b) {
   if (!fb)
     return;
+  PROFILE_BEGIN;
   uint16_t color = dtr_rgb(r, g, b);
   int left = dtr_clip.left > OX ? dtr_clip.left : OX,
       top = dtr_clip.top > OY ? dtr_clip.top : OY;
@@ -233,11 +235,13 @@ void dtr_clear(int r, int g, int b) {
   int bottom = dtr_clip.bottom < OY + TH ? dtr_clip.bottom : OY + TH;
   for (int y = top; y < bottom; y++)
     fill_span(left,right,y,color);
+  PROFILE_END(3);
 }
 void dtr_clear_disc_background(int cx,int cy,int radius,
                                int outer_r,int outer_g,int outer_b,
                                int inner_r,int inner_g,int inner_b){
   if(!fb||radius<0)return;
+  PROFILE_BEGIN;
   uint16_t outer=dtr_rgb(outer_r,outer_g,outer_b);
   uint16_t inner=dtr_rgb(inner_r,inner_g,inner_b);
   int left=dtr_clip.left>OX?dtr_clip.left:OX;
@@ -254,6 +258,7 @@ void dtr_clear_disc_background(int cx,int cy,int radius,
     if(b<left)b=left;if(b>right)b=right;
     fill_span(left,a,y,outer);fill_span(a,b,y,inner);fill_span(b,right,y,outer);
   }
+  PROFILE_END(3);
 }
 void dtr_hide_text(int hidden) { hide_text = hidden; }
 #if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
@@ -307,13 +312,7 @@ static uint16_t dither565(int x, int y, int r, int g, int b) {
     bb = 31;
   return (rr << 11) | (gg << 5) | bb;
 }
-void dtr_pixel(int x, int y, int r, int g, int b, int alpha) {
-  if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
-      y >= dtr_clip.bottom || x < OX || x >= OX + TW || y < OY ||
-      y >= OY + TH || alpha <= 0 || !fb)
-    return;
-  if (!dirty_pixel(x, y))
-    return;
+static inline int density_alpha(int x,int y,int alpha) {
   if (density_mask < 255) {
     int rank = dtr_density_rank[(y & 15) * 16 + (x & 15)];
     if (density_pattern) {
@@ -333,12 +332,18 @@ void dtr_pixel(int x, int y, int r, int g, int b, int alpha) {
     }
     int cover = density_mask * 256 - rank * 255;
     if (cover <= 0)
-      return;
+      return 0;
     if (cover < 255)
       alpha = alpha * cover / 255;
     if (alpha <= 0)
-      return;
+      return 0;
   }
+  return alpha;
+}
+/* Bounds, clip and damage were already checked by the primitive. */
+static inline void blend_unchecked(int x,int y,int r,int g,int b,int alpha) {
+  alpha=density_alpha(x,y,alpha);
+  if(alpha<=0)return;
   uint16_t *p = &fb[(y - OY) * STRIDE + x - OX];
   if (alpha < 255) {
     uint16_t old = *p;
@@ -348,6 +353,16 @@ void dtr_pixel(int x, int y, int r, int g, int b, int alpha) {
   }
   *p = dither565(x, y, r, g, b);
 }
+static inline void put565_unchecked(int x,int y,uint16_t color) {
+  fb[(y-OY)*STRIDE+x-OX]=color;
+}
+void dtr_pixel(int x, int y, int r, int g, int b, int alpha) {
+  if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
+      y >= dtr_clip.bottom || x < OX || x >= OX + TW || y < OY ||
+      y >= OY + TH || alpha <= 0 || !fb || !dirty_pixel(x,y))
+    return;
+  blend_unchecked(x,y,r,g,b,alpha);
+}
 void dtr_pixel565(int x, int y, uint16_t color) {
   if (!fb || x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
       y >= dtr_clip.bottom || x < OX || x >= OX + TW || y < OY ||
@@ -356,8 +371,9 @@ void dtr_pixel565(int x, int y, uint16_t color) {
   fb[(y - OY) * STRIDE + x - OX] = color;
 }
 void dtr_rect(int x, int y, int w, int h, int r, int g, int b, int a) {
-  if (!dirty_rect(x, y, w, h) || a <= 0)
+  if (!fb || !dirty_rect(x, y, w, h) || a <= 0)
     return;
+  PROFILE_BEGIN;
   int left=x>dtr_clip.left?x:dtr_clip.left;
   int top=y>dtr_clip.top?y:dtr_clip.top;
   int right=x+w<dtr_clip.right?x+w:dtr_clip.right;
@@ -365,11 +381,15 @@ void dtr_rect(int x, int y, int w, int h, int r, int g, int b, int a) {
   if(left<OX)left=OX;if(top<OY)top=OY;
   if(right>OX+TW)right=OX+TW;if(bottom>OY+TH)bottom=OY+TH;
   for (int j = top; j < bottom; j++)
-    for (int i = left; i < right; i++)
-      dtr_pixel(i, j, r, g, b, a);
+    for (int i = left; i < right; i++) {
+      if(!dirty_pixel(i,j)){i=((i>>4)+1)*16-1;continue;}
+      blend_unchecked(i,j,r,g,b,a);
+    }
+  PROFILE_END(4);
 }
 void dtr_disc(int cx,int cy,int radius,int r,int g,int b){
   if(!fb||radius<=0)return;
+  PROFILE_BEGIN;
   uint16_t color=dtr_rgb(r,g,b);
   int top=cy-radius+1>dtr_clip.top?cy-radius+1:dtr_clip.top;
   int bottom=cy+radius<dtr_clip.bottom?cy+radius:dtr_clip.bottom;
@@ -383,8 +403,9 @@ void dtr_disc(int cx,int cy,int radius,int r,int g,int b){
     if(right>=dtr_clip.right)right=dtr_clip.right-1;
     if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
     if(left<0)left=0;if(right>=W)right=W-1;
-    for(int x=left;x<=right;x++)if(dirty_pixel(x,y))dtr_pixel565(x,y,color);
+    fill_span(left,right+1,y,color);
   }
+  PROFILE_END(4);
 }
 float dtr_root(float n) { return __builtin_sqrtf(n); }
 void dtr_line(int x, int y, int xx, int yy, int weight, int r, int g, int b,
@@ -411,6 +432,7 @@ void dtr_line(int x, int y, int xx, int yy, int weight, int r, int g, int b,
     miny = OY;
   if (maxy >= OY + TH)
     maxy = OY + TH - 1;
+  PROFILE_BEGIN;
   for (int j = miny; j <= maxy; j++)
     for (int i = minx; i <= maxx; i++) {
       if (!dirty_pixel(i, j)) {
@@ -423,8 +445,9 @@ void dtr_line(int x, int y, int xx, int yy, int weight, int r, int g, int b,
         continue;
       float dist = dtr_root(dx * dx + dy * dy);
       int aa = (int)(dtr_limit(weight * .5f + .65f - dist) * a);
-      dtr_pixel(i, j, r, g, b, aa);
+      blend_unchecked(i,j,r,g,b,aa);
     }
+  PROFILE_END(4);
 }
 int dtr_trig(int angle) {
   angle %= 360;
@@ -467,6 +490,7 @@ void dtr_spindle(int cx, int cy, int inner, int outer, int angle,
     yb = OY + TH - 1;
   if (!dirty_rect(xa, ya, xb - xa + 1, yb - ya + 1))
     return;
+  PROFILE_BEGIN;
   float length = outer - inner;
   /* The rotated spindle occupies a narrow strip, not its enclosing rectangle.
    * Bound each scanline by the maximum possible perpendicular coverage. Keep
@@ -499,9 +523,10 @@ void dtr_spindle(int cx, int cy, int inner, int outer, int angle,
         across = -across;
       int coverage = (int)(dtr_limit(width + .65f - across) * alpha);
       if (coverage)
-        dtr_pixel(x, y, r, g, b, coverage);
+        blend_unchecked(x,y,r,g,b,coverage);
     }
   }
+  PROFILE_END(4);
 }
 /* Analytic annular sector: smooth circular edges without dtr_radial-spoke
  * seams. */
@@ -586,7 +611,7 @@ void dtr_arc_bands(int cx,int cy,int inner,int first,int last,
         if(last-first<=180){coverage=(coverage*c1+16384)>>15;coverage=(coverage*c2+16384)>>15;}
         else coverage=(coverage*(32767-outside)+16384)>>15;
         int opacity=(coverage*alpha+16384)>>15;
-        if(opacity)dtr_pixel(x,y,colors[i].r,colors[i].g,colors[i].b,opacity);
+        if(opacity)blend_unchecked(x,y,colors[i].r,colors[i].g,colors[i].b,opacity);
       }
     }
   }
@@ -770,7 +795,7 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
           *target == base)
         *target = flat[(y & 3) * 4 + (x & 3)];
       else
-        dtr_pixel(x, y, r, g, b, opacity);
+        blend_unchecked(x,y,r,g,b,opacity);
     }
   }
   PROFILE_END(1);
@@ -854,8 +879,8 @@ void dtr_metal_ring(int cx, int cy, int R, int thickness,
         continue;
       }
       uint8_t c, a;
-      if (dtr_metal_sample(dx, dy, R, metal, &c, &a))
-        dtr_pixel(x, y, c, c, c, a);
+      if (dtr_metal_sample(dx, dy, R, metal, &c, &a) && dirty_pixel(x,y))
+        blend_unchecked(x,y,c,c,c,a);
     }
   PROFILE_END(0);
 }
@@ -898,9 +923,9 @@ static void metal_ring_cached(int cx, int cy, int R, int thickness,
     if (t->alpha == 255 && density_mask == 255) {
       static const uint8_t bayer[16] = {0, 8,  2, 10, 12, 4, 14, 6,
                                         3, 11, 1, 9,  15, 7, 13, 5};
-      dtr_pixel565(x, y, dtr_grey[t->grey * 16 + bayer[(y & 3) * 4 + (x & 3)]]);
+      put565_unchecked(x,y,dtr_grey[t->grey*16+bayer[(y&3)*4+(x&3)]]);
     } else
-      dtr_pixel(x, y, t->grey, t->grey, t->grey, t->alpha);
+      blend_unchecked(x,y,t->grey,t->grey,t->grey,t->alpha);
   }
   PROFILE_END(0);
 }
@@ -941,8 +966,8 @@ void dtr_metal_ring_cached_sector(int cx,int cy,int R,int thickness,
     if(!sector_contains(t->x,t->y,first,last))continue;
     if(t->alpha==255&&density_mask==255){
       static const uint8_t bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
-      dtr_pixel565(x,y,dtr_grey[t->grey*16+bayer[(y&3)*4+(x&3)]]);
-    }else dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
+      put565_unchecked(x,y,dtr_grey[t->grey*16+bayer[(y&3)*4+(x&3)]]);
+    }else blend_unchecked(x,y,t->grey,t->grey,t->grey,t->alpha);
   }
   PROFILE_END(0);
 }
@@ -974,7 +999,7 @@ static void metal_ring_scaled(int cx, int cy, int source_radius,
     if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
         y >= dtr_clip.bottom || !dirty_pixel(x, y))
       continue;
-    dtr_pixel(x, y, t->grey, t->grey, t->grey, t->alpha);
+    blend_unchecked(x,y,t->grey,t->grey,t->grey,t->alpha);
   }
   PROFILE_END(0);
 }
@@ -1004,7 +1029,7 @@ void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
        y>=dtr_clip.bottom||x<OX||x>=OX+TW||y<OY||y>=OY+TH||
        !dirty_pixel(x,y))continue;
     if(!sector_contains(ox,oy,first,last))continue;
-    dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
+    blend_unchecked(x,y,t->grey,t->grey,t->grey,t->alpha);
   }
   PROFILE_END(0);
 }

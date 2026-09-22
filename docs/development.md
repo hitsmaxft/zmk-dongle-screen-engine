@@ -130,3 +130,11 @@ unavailable. WASM size is not firmware Flash usage.
 Compare the same board, shield, Kconfig and toolchain. SPI figures estimate
 payload, transfer time and budget utilization. Measure command overhead, DMA
 gaps, task contention and panel timing on hardware.
+
+With logging enabled, the firmware diagnostic window reports planning, region
+drawing, end-to-end frame latency, dirty rectangles, tile hashing, packet
+packing, display busy time, writes and bytes per presented frame. Raster
+profiling separates ring, arc, text, clear and shape time and reports call
+counts. Use these figures to decide whether to reduce drawing, damage, packet
+setup or transport time. A synchronous `display_write()` cannot overlap CPU
+drawing merely by allocating a second buffer.

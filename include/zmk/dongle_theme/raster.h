@@ -73,7 +73,8 @@ struct dtr_metal_texel {
   uint8_t grey, alpha;
 };
 extern uint32_t
-    dtr_profile_cycles[3]; /* ring / arcs / text, diagnostics only */
+    dtr_profile_cycles[5]; /* ring / arcs / text / clear / shapes */
+extern uint32_t dtr_profile_calls[5];
 void dtr_metal_ring_cached(int cx, int cy, int radius, int thickness,
                            const struct dtr_metal_texel *atlas, size_t count);
 void dtr_metal_rim_cached(int cx, int cy, int radius, int thickness,

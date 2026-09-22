@@ -38,6 +38,10 @@ static uint32_t touch_contacts, touch_hints, touch_dropped;
 static uint32_t plan_us,plan_max_us,plan_count;
 static uint32_t region_us,region_max_us,region_count;
 static uint32_t display_us,display_count,present_bytes,present_writes;
+static uint32_t frame_us,frame_max_us,frame_count,profile_presented_frames;
+static uint32_t hash_us,hash_max_us,hash_count,pack_us,pack_max_us,pack_count;
+static uint32_t dirty_rects,dirty_rect_max,damage_frames;
+static uint32_t candidate_tiles,changed_tiles;
 static bool animation_open;
 static uint32_t animation_last, animation_us, animation_intervals;
 static uint32_t last_presented, stats_deadline;
@@ -177,15 +181,22 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
     }
   }
   int ncols=(dte_width()+15)/16,nrows=(dte_height()+15)/16;
+  uint32_t hash_started=k_cycle_get_32();
+  uint32_t candidate_count=0,changed_count=0;
   for(int ty=0;ty<nrows;ty++)for(int tx=0;tx<ncols;tx++){
     if(!(candidates[ty]&(1u<<tx)))continue;
+    candidate_count++;
     uint32_t hash=dte_hash_rgb565_tile(full_pixels,dte_width(),0,0,tx*16,ty*16,
                                        dte_width(),dte_height());
     int index=ty*18+tx;
-    if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
+    if(force||tile_hash[index]!=hash){changed[ty]|=1u<<tx;changed_count++;}
     tile_hash[index]=hash;
   }
+  uint32_t hash_elapsed=k_cyc_to_us_floor32(k_cycle_get_32()-hash_started);
+  hash_us+=hash_elapsed;hash_count++;if(hash_elapsed>hash_max_us)hash_max_us=hash_elapsed;
+  candidate_tiles+=candidate_count;changed_tiles+=changed_count;
   bool sent=false;
+  uint32_t pack_elapsed=0;
   struct dte_dirty_rect rect;
   while(dte_next_dirty_rect(changed,dte_width(),dte_height(),&rect)){
     int n=rect.width*rect.height;
@@ -193,6 +204,7 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
       transfer_failed=true;LOG_ERR("full-frame tile rectangle exceeds scratch");break;
     }
     int stride=dte_width();
+    uint32_t pack_started=k_cycle_get_32();
     uint16_t *dst=packed_pixels;
     const uint16_t *row=full_pixels+rect.y*stride+rect.x;
     for(int y=0;y<rect.height;y++,row+=stride)
@@ -200,6 +212,7 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
         uint16_t pixel=row[x];
         *dst++=IS_ENABLED(CONFIG_LV_COLOR_16_SWAP)?__builtin_bswap16(pixel):pixel;
       }
+    pack_elapsed+=k_cyc_to_us_floor32(k_cycle_get_32()-pack_started);
     struct display_buffer_descriptor desc={.width=rect.width,.height=rect.height,
       .pitch=rect.width,.buf_size=(size_t)n*2u};
     uint32_t write_started=k_cycle_get_32();
@@ -209,6 +222,7 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
     if(rc){transfer_failed=true;LOG_ERR("display full tiles failed: %d",rc);break;}
     sent=true;
   }
+  pack_us+=pack_elapsed;pack_count++;if(pack_elapsed>pack_max_us)pack_max_us=pack_elapsed;
   full_hash_valid=!transfer_failed;
   return sent&&!transfer_failed;
 }
@@ -346,6 +360,10 @@ static void frame_work_cb(struct k_work *work) {
   uint32_t started = k_cycle_get_32();
   struct dte_frame_result frame = DTE_FRAME_RESULT_INIT;
   dte_result_t frame_status = dte_frame(now, &frame);
+  if(frame_status==DTE_STATUS_OK){
+    dirty_rects+=frame.dirty_count;damage_frames++;
+    if(frame.dirty_count>dirty_rect_max)dirty_rect_max=frame.dirty_count;
+  }
   bool active =
       frame_status == DTE_STATUS_OK &&
       (frame.flags & (DTE_RENDER_CONTINUOUS | DTE_RENDER_DEADLINE_VALID));
@@ -358,6 +376,10 @@ static void frame_work_cb(struct k_work *work) {
   if (!startup_visible && transfer_failed && ++startup_attempts < 3)
     k_work_reschedule_for_queue(zmk_display_work_q(), &frame_work, K_MSEC(50));
   uint32_t completed = k_cycle_get_32();
+  uint32_t frame_elapsed=k_cyc_to_us_floor32(completed-started);
+  frame_us+=frame_elapsed;frame_count++;
+  if(frame_elapsed>frame_max_us)frame_max_us=frame_elapsed;
+  if(presented)profile_presented_frames++;
   if (!animation_open && active)
     last_presented = 0;
   if (presented && animation_open) {
@@ -618,15 +640,31 @@ static void diagnostic_cb(struct k_work *work) {
   LOG_INF("10s frame plan=%u avg/max=%u/%u us; region draw=%u avg/max=%u/%u us",
           plan_count,plan_count?plan_us/plan_count:0,plan_max_us,
           region_count,region_count?region_us/region_count:0,region_max_us);
-  LOG_INF("display writes=%u avg=%u us; payload=%u bytes (%u strips)",
-          display_count,display_count?display_us/display_count:0,
-          present_bytes,present_writes);
+  LOG_INF("frame total=%u avg/max=%u/%u us; dirty rect avg_x10/max=%u/%u",
+          frame_count,frame_count?frame_us/frame_count:0,frame_max_us,
+          damage_frames?dirty_rects*10/damage_frames:0,dirty_rect_max);
+  LOG_INF("hash frames=%u avg/max=%u/%u us; tile candidate/changed avg_x10=%u/%u",
+          hash_count,hash_count?hash_us/hash_count:0,hash_max_us,
+          hash_count?candidate_tiles*10/hash_count:0,
+          hash_count?changed_tiles*10/hash_count:0);
+  LOG_INF("pack frames=%u avg/max=%u/%u us",pack_count,
+          pack_count?pack_us/pack_count:0,pack_max_us);
+  LOG_INF("display frames=%u busy/frame=%u us; writes/frame_x10=%u; bytes/frame=%u",
+          profile_presented_frames,
+          profile_presented_frames?display_us/profile_presented_frames:0,
+          profile_presented_frames?present_writes*10/profile_presented_frames:0,
+          profile_presented_frames?present_bytes/profile_presented_frames:0);
   LOG_INF(
-      "raster avg ring/arcs/text=%u/%u/%u us",
+      "raster/draw ring/arcs/text/clear/shapes=%u/%u/%u/%u/%u us",
       region_count?k_cyc_to_us_floor32(dtr_profile_cycles[0])/region_count:0,
       region_count?k_cyc_to_us_floor32(dtr_profile_cycles[1])/region_count:0,
-      region_count?k_cyc_to_us_floor32(dtr_profile_cycles[2])/region_count:0);
-  dtr_profile_cycles[0] = dtr_profile_cycles[1] = dtr_profile_cycles[2] = 0;
+      region_count?k_cyc_to_us_floor32(dtr_profile_cycles[2])/region_count:0,
+      region_count?k_cyc_to_us_floor32(dtr_profile_cycles[3])/region_count:0,
+      region_count?k_cyc_to_us_floor32(dtr_profile_cycles[4])/region_count:0);
+  LOG_INF("raster calls ring/arcs/text/clear/shapes=%u/%u/%u/%u/%u",
+          dtr_profile_calls[0],dtr_profile_calls[1],dtr_profile_calls[2],
+          dtr_profile_calls[3],dtr_profile_calls[4]);
+  for(int i=0;i<5;i++)dtr_profile_cycles[i]=dtr_profile_calls[i]=0;
   LOG_INF("animation intervals=%u fps_x10=%u; direct=%d", animation_intervals,
           animation_us ? (uint32_t)((uint64_t)animation_intervals * 10000000 /
                                     animation_us)
@@ -640,6 +678,9 @@ static void diagnostic_cb(struct k_work *work) {
   plan_us=plan_count=plan_max_us=0;
   region_us=region_count=region_max_us=0;
   display_us=display_count=present_bytes=present_writes=0;
+  frame_us=frame_max_us=frame_count=profile_presented_frames=0;
+  hash_us=hash_max_us=hash_count=pack_us=pack_max_us=pack_count=0;
+  dirty_rects=dirty_rect_max=damage_frames=candidate_tiles=changed_tiles=0;
   k_work_reschedule_for_queue(zmk_display_work_q(), &diagnostic_work,
                               K_SECONDS(10));
 }
