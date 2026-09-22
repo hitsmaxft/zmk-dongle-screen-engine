@@ -835,9 +835,11 @@ void dtr_text(const char *s, int x, int y, int size, int r, int g, int b,
         for (int xx = 0; xx < gl->w; xx++) {
           int idx = yy * gl->w + xx, v = f->bits[gl->offset + idx / 2];
           v = (idx & 1) ? v & 15 : v >> 4;
-          if (v)
-            dtr_pixel(pen + gl->ox + xx, base - gl->h - gl->oy + yy, r, g, b,
-                      v * alpha / 15);
+          int dx=pen+gl->ox+xx,dy=base-gl->h-gl->oy+yy;
+          if(v&&dx>=dtr_clip.left&&dx<dtr_clip.right&&dy>=dtr_clip.top&&
+             dy<dtr_clip.bottom&&dx>=OX&&dx<OX+TW&&dy>=OY&&dy<OY+TH&&
+             dirty_pixel(dx,dy))
+            blend_unchecked(dx,dy,r,g,b,v*alpha/15);
         }
       pen += gl->advance;
       continue;
@@ -848,7 +850,11 @@ void dtr_text(const char *s, int x, int y, int size, int r, int g, int b,
             idx = py * gl->w + px;
         int v = f->bits[gl->offset + idx / 2];
         v = (idx & 1) ? v & 15 : v >> 4;
-        dtr_pixel(pen + ox + xx, base - gh - oy + yy, r, g, b, v * alpha / 15);
+        int dx=pen+ox+xx,dy=base-gh-oy+yy;
+        if(v&&dx>=dtr_clip.left&&dx<dtr_clip.right&&dy>=dtr_clip.top&&
+           dy<dtr_clip.bottom&&dx>=OX&&dx<OX+TW&&dy>=OY&&dy<OY+TH&&
+           dirty_pixel(dx,dy))
+          blend_unchecked(dx,dy,r,g,b,v*alpha/15);
       }
     pen += (int)(gl->advance * scale + .5f);
   }
