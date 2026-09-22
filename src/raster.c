@@ -711,13 +711,18 @@ void dtr_metal_ring_cached_sector(int cx,int cy,int R,int thickness,
   (void)R;(void)thickness;
   if(!fb)return;
   PROFILE_BEGIN;
-  for(size_t i=0;i<count;i++){
+  int first_y=dtr_clip.top;if(first_y<OY)first_y=OY;
+  int last_y=dtr_clip.bottom-1;if(last_y>OY+TH-1)last_y=OY+TH-1;
+  size_t lo=0,hi=count;
+  while(lo<hi){size_t mid=lo+(hi-lo)/2;
+    if(cy+atlas[mid].y<first_y)lo=mid+1;else hi=mid;}
+  for(size_t i=lo;i<count&&cy+atlas[i].y<=last_y;i++){
     const struct dtr_metal_texel *t=&atlas[i];
-    if(!sector_contains(t->x,t->y,first,last))continue;
     int x=cx+t->x,y=cy+t->y;
     if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||
        y>=dtr_clip.bottom||x<OX||x>=OX+TW||y<OY||y>=OY+TH||
        !dirty_pixel(x,y))continue;
+    if(!sector_contains(t->x,t->y,first,last))continue;
     if(t->alpha==255&&density_mask==255){
       static const uint8_t bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
       dtr_pixel565(x,y,dtr_grey[t->grey*16+bayer[(y&3)*4+(x&3)]]);
@@ -783,11 +788,11 @@ void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
     const struct dtr_metal_texel *t=&atlas[i];
     int ox=dtr_scale_offset(t->x,source_radius,target_radius);
     int oy=dtr_scale_offset(t->y,source_radius,target_radius);
-    if(!sector_contains(ox,oy,first,last))continue;
     int x=cx+ox,y=cy+oy;
     if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||
        y>=dtr_clip.bottom||x<OX||x>=OX+TW||y<OY||y>=OY+TH||
        !dirty_pixel(x,y))continue;
+    if(!sector_contains(ox,oy,first,last))continue;
     dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
   }
   PROFILE_END(0);
