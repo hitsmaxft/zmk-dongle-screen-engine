@@ -299,6 +299,24 @@ void dtr_rect(int x, int y, int w, int h, int r, int g, int b, int a) {
     for (int i = left; i < right; i++)
       dtr_pixel(i, j, r, g, b, a);
 }
+void dtr_disc(int cx,int cy,int radius,int r,int g,int b){
+  if(!fb||radius<=0)return;
+  uint16_t color=dtr_rgb(r,g,b);
+  int top=cy-radius+1>dtr_clip.top?cy-radius+1:dtr_clip.top;
+  int bottom=cy+radius<dtr_clip.bottom?cy+radius:dtr_clip.bottom;
+  if(top<OY)top=OY;if(bottom>OY+TH)bottom=OY+TH;
+  if(top<0)top=0;if(bottom>H)bottom=H;
+  for(int y=top;y<bottom;y++){
+    int dy=y-cy;
+    int edge=(int)dtr_root(radius*radius-dy*dy-1);
+    int left=cx-edge,right=cx+edge;
+    if(left<dtr_clip.left)left=dtr_clip.left;
+    if(right>=dtr_clip.right)right=dtr_clip.right-1;
+    if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
+    if(left<0)left=0;if(right>=W)right=W-1;
+    for(int x=left;x<=right;x++)if(dirty_pixel(x,y))dtr_pixel565(x,y,color);
+  }
+}
 float dtr_root(float n) { return __builtin_sqrtf(n); }
 void dtr_line(int x, int y, int xx, int yy, int weight, int r, int g, int b,
               int a) {
@@ -679,6 +697,35 @@ void dtr_metal_ring_cached(int cx, int cy, int R, int thickness,
   PROFILE_END(0);
 }
 
+static int sector_contains(int x,int y,int first,int last){
+  int sx=dtr_trig(first+90),sy=dtr_trig(first);
+  int ex=dtr_trig(last+90),ey=dtr_trig(last);
+  int64_t cross1=(int64_t)sx*y-(int64_t)sy*x;
+  int64_t cross2=(int64_t)x*ey-(int64_t)y*ex;
+  int span=last-first;while(span<=0)span+=360;
+  return span<=180?cross1>=0&&cross2>0:!(cross1<0&&cross2<=0);
+}
+void dtr_metal_ring_cached_sector(int cx,int cy,int R,int thickness,
+                                  const struct dtr_metal_texel *atlas,
+                                  size_t count,int first,int last){
+  (void)R;(void)thickness;
+  if(!fb)return;
+  PROFILE_BEGIN;
+  for(size_t i=0;i<count;i++){
+    const struct dtr_metal_texel *t=&atlas[i];
+    if(!sector_contains(t->x,t->y,first,last))continue;
+    int x=cx+t->x,y=cy+t->y;
+    if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||
+       y>=dtr_clip.bottom||x<OX||x>=OX+TW||y<OY||y>=OY+TH||
+       !dirty_pixel(x,y))continue;
+    if(t->alpha==255&&density_mask==255){
+      static const uint8_t bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
+      dtr_pixel565(x,y,dtr_grey[t->grey*16+bayer[(y&3)*4+(x&3)]]);
+    }else dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
+  }
+  PROFILE_END(0);
+}
+
 static int dtr_scale_offset(int value,int source_radius,int target_radius){
   int scaled=value*target_radius;
   return scaled>=0?(scaled+source_radius/2)/source_radius:
@@ -722,6 +769,26 @@ void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
         y >= dtr_clip.bottom || !dirty_pixel(x, y))
       continue;
     dtr_pixel(x, y, t->grey, t->grey, t->grey, t->alpha);
+  }
+  PROFILE_END(0);
+}
+void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
+                                  int target_radius,int thickness,
+                                  const struct dtr_metal_texel *atlas,
+                                  size_t count,int first,int last){
+  (void)thickness;
+  if(!fb)return;
+  PROFILE_BEGIN;
+  for(size_t i=0;i<count;i++){
+    const struct dtr_metal_texel *t=&atlas[i];
+    int ox=dtr_scale_offset(t->x,source_radius,target_radius);
+    int oy=dtr_scale_offset(t->y,source_radius,target_radius);
+    if(!sector_contains(ox,oy,first,last))continue;
+    int x=cx+ox,y=cy+oy;
+    if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||
+       y>=dtr_clip.bottom||x<OX||x>=OX+TW||y<OY||y>=OY+TH||
+       !dirty_pixel(x,y))continue;
+    dtr_pixel(x,y,t->grey,t->grey,t->grey,t->alpha);
   }
   PROFILE_END(0);
 }

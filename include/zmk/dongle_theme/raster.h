@@ -32,6 +32,7 @@ void dtr_pixel(int x, int y, int r, int g, int b, int alpha);
 /* Exact pre-quantized asset pixel; bypasses RGB888 blending/dithering. */
 void dtr_pixel565(int x, int y, uint16_t color);
 void dtr_rect(int x, int y, int w, int h, int r, int g, int b, int alpha);
+void dtr_disc(int cx,int cy,int radius,int r,int g,int b);
 void dtr_line(int x, int y, int xx, int yy, int weight, int r, int g, int b,
               int alpha);
 void dtr_radial(int cx, int cy, int r1, int r2, int angle, int weight, int r,
@@ -62,6 +63,13 @@ extern uint32_t
     dtr_profile_cycles[3]; /* ring / arcs / text, diagnostics only */
 void dtr_metal_ring_cached(int cx, int cy, int radius, int thickness,
                            const struct dtr_metal_texel *atlas, size_t count);
+void dtr_metal_ring_cached_sector(int cx,int cy,int radius,int thickness,
+                                  const struct dtr_metal_texel *atlas,
+                                  size_t count,int first,int last);
 void dtr_metal_ring_scaled(int cx, int cy, int source_radius, int target_radius,
                            int thickness, const struct dtr_metal_texel *atlas,
                            size_t count);
+void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
+                                  int target_radius,int thickness,
+                                  const struct dtr_metal_texel *atlas,
+                                  size_t count,int first,int last);
