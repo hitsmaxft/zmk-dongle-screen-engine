@@ -415,6 +415,7 @@ void dtr_line(int x, int y, int xx, int yy, int weight, int r, int g, int b,
   int minx = (x < xx ? x : xx) - weight, maxx = (x > xx ? x : xx) + weight;
   int miny = (y < yy ? y : yy) - weight, maxy = (y > yy ? y : yy) + weight;
   float vx = xx - x, vy = yy - y, len = vx * vx + vy * vy;
+  float inv_len = len ? 1.f / len : 0;
   float maxdist = weight * .5f + .65f;
   if (minx < dtr_clip.left)
     minx = dtr_clip.left;
@@ -439,7 +440,7 @@ void dtr_line(int x, int y, int xx, int yy, int weight, int r, int g, int b,
         i = ((i / 16) + 1) * 16 - 1;
         continue;
       }
-      float t = len ? dtr_limit(((i - x) * vx + (j - y) * vy) / len) : 0;
+      float t = dtr_limit(((i - x) * vx + (j - y) * vy) * inv_len);
       float dx = i - x - t * vx, dy = j - y - t * vy;
       if (dx * dx + dy * dy > maxdist * maxdist)
         continue;
@@ -492,6 +493,7 @@ void dtr_spindle(int cx, int cy, int inner, int outer, int angle,
     return;
   PROFILE_BEGIN;
   float length = outer - inner;
+  float inv_length = 1.f / length;
   /* The rotated spindle occupies a narrow strip, not its enclosing rectangle.
    * Bound each scanline by the maximum possible perpendicular coverage. Keep
    * the original coverage arithmetic below, including endpoint antialiasing. */
@@ -515,7 +517,7 @@ void dtr_spindle(int cx, int cy, int inner, int outer, int angle,
       float dx = x - cx, dy = y - cy, along = dx * ux + dy * uy;
       if (along < inner - .65f || along > outer + .65f)
         continue;
-      float u = dtr_limit((along - inner) / length);
+      float u = dtr_limit((along - inner) * inv_length);
       /* 0.2px endpoint leaves one AA pixel; 4u(1-u) makes a true spindle. */
       float width = .20f + half_width * (4 * u * (1 - u));
       float across = dx * (-uy) + dy * ux;
@@ -982,6 +984,19 @@ static int dtr_scale_offset(int value,int source_radius,int target_radius){
   return scaled>=0?(scaled+source_radius/2)/source_radius:
                    (scaled-source_radius/2)/source_radius;
 }
+#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+static int scale_source=-1,scale_target=-1;
+static int16_t scale_offsets[256];
+static void prepare_scale_offsets(int source_radius,int target_radius){
+  if(scale_source==source_radius&&scale_target==target_radius)return;
+  for(int value=-128;value<128;value++)
+    scale_offsets[(uint8_t)value]=dtr_scale_offset(value,source_radius,target_radius);
+  scale_source=source_radius;scale_target=target_radius;
+}
+static inline int cached_scale_offset(int value){
+  return scale_offsets[(uint8_t)(int8_t)value];
+}
+#endif
 
 static void metal_ring_scaled(int cx, int cy, int source_radius,
                               int target_radius, int thickness,
@@ -990,17 +1005,30 @@ static void metal_ring_scaled(int cx, int cy, int source_radius,
   if (!fb)
     return;
   PROFILE_BEGIN;
+#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+  prepare_scale_offsets(source_radius,target_radius);
+#endif
   if(clear_disc)
     fill_flat_disc(cx,cy,target_radius-thickness-1,dtr_rgb(8,10,12));
   int first_y=dtr_clip.top;if(first_y<OY)first_y=OY;
   int last_y=dtr_clip.bottom-1;if(last_y>OY+TH-1)last_y=OY+TH-1;
   size_t lo=0,hi=count;
   while(lo<hi){size_t mid=lo+(hi-lo)/2;
-    if(cy+dtr_scale_offset(atlas[mid].y,source_radius,target_radius)<first_y)lo=mid+1;else hi=mid;}
+    int sy=
+#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+      cached_scale_offset(atlas[mid].y);
+#else
+      dtr_scale_offset(atlas[mid].y,source_radius,target_radius);
+#endif
+    if(cy+sy<first_y)lo=mid+1;else hi=mid;}
   for (size_t i = lo; i < count; i++) {
     const struct dtr_metal_texel *t = &atlas[i];
+#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+    int x=cx+cached_scale_offset(t->x),y=cy+cached_scale_offset(t->y);
+#else
     int x=cx+dtr_scale_offset(t->x,source_radius,target_radius);
     int y=cy+dtr_scale_offset(t->y,source_radius,target_radius);
+#endif
     if(y>last_y)break;
     if (x < dtr_clip.left || x >= dtr_clip.right || y < dtr_clip.top ||
         y >= dtr_clip.bottom || !dirty_pixel(x, y))
@@ -1026,10 +1054,17 @@ void dtr_metal_ring_scaled_sector(int cx,int cy,int source_radius,
   (void)thickness;
   if(!fb)return;
   PROFILE_BEGIN;
+#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+  prepare_scale_offsets(source_radius,target_radius);
+#endif
   for(size_t i=0;i<count;i++){
     const struct dtr_metal_texel *t=&atlas[i];
+#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+    int ox=cached_scale_offset(t->x),oy=cached_scale_offset(t->y);
+#else
     int ox=dtr_scale_offset(t->x,source_radius,target_radius);
     int oy=dtr_scale_offset(t->y,source_radius,target_radius);
+#endif
     int x=cx+ox,y=cy+oy;
     if(x<dtr_clip.left||x>=dtr_clip.right||y<dtr_clip.top||
        y>=dtr_clip.bottom||x<OX||x>=OX+TW||y<OY||y>=OY+TH||

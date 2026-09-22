@@ -91,6 +91,14 @@ Two optional firmware settings affect performance:
   after a 1 ms queue yield instead of another FPS grid boundary. Measure
   keyboard, BLE and touch latency alongside frame rate.
 
+For Cortex-M4F builds, audit the final ELF rather than inferring cost from C
+syntax. Speed builds treat float-to-double promotion as an error. Renderer hot
+functions should not call `__aeabi_d*`, trigonometric libm functions or 64-bit
+division helpers. `sqrtf` may compile to hardware `VSQRT.F32`; distinguish
+per-scanline use from per-pixel use. Hoist invariant division out of pixel
+loops and cache integer coordinate transforms before replacing ordinary float
+addition or multiplication.
+
 ## Filters and physical mask
 
 Filters run after drawing and before hashing, in scene coordinates. CRT adds
