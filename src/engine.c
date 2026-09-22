@@ -39,6 +39,7 @@ static uint32_t preview_transfer_bytes,preview_dirty_rects,preview_draw_calls;
 static uint32_t preview_tile_hash[18*18];
 static int preview_force=1;
 static int preview_filter=DTE_FILTER_NONE,preview_filter_changed;
+static int preview_filter_corner_radius=24;
 static uint32_t preview_filter_pixels;
 #endif
 static struct dte_snapshot state;
@@ -397,6 +398,7 @@ int dte_render(uint32_t now) {
       canvas.buffer_size=((uint32_t)(h-1)*width+r->width)*2u;
       canvas.pixels=preview_pixels+y*width+r->x;
       if(dte_draw(now,&canvas)!=DTE_STATUS_OK)return 0;
+      dte_filter_set_corner_radius(preview_filter_corner_radius);
       preview_filter_pixels+=dte_filter_apply((uint8_t)preview_filter,&canvas);
       preview_draw_calls++;
       for(int i=0;i<18;i++)changed[i]=0;
@@ -437,6 +439,14 @@ int dte_preview_set_filter(int filter){
 }
 int dte_preview_filter(void){return preview_filter;}
 uint32_t dte_preview_filter_pixels(void){return preview_filter_pixels;}
+int dte_preview_set_filter_corner_radius(int radius){
+  radius=clamp(radius,0,120);
+  if(preview_filter_corner_radius!=radius){
+    preview_filter_corner_radius=radius;preview_filter_changed=1;preview_force=1;
+  }
+  return preview_filter_corner_radius;
+}
+int dte_preview_filter_corner_radius(void){return preview_filter_corner_radius;}
 uint32_t dte_preview_transfer_bytes(void){return preview_transfer_bytes;}
 uint32_t dte_preview_dirty_rects(void){return preview_dirty_rects;}
 uint32_t dte_preview_draw_calls(void){return preview_draw_calls;}

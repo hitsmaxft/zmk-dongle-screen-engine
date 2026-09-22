@@ -6,6 +6,11 @@
  * while leaving the central content untouched. */
 static const uint8_t edge_opa[16] = {216,188,160,136,114,94,76,61,
                                      48,38,30,23,17,12,8,4};
+static int configured_corner_radius;
+
+void dte_filter_set_corner_radius(int radius) {
+  configured_corner_radius = radius < 0 ? 0 : radius;
+}
 
 static uint16_t darken(uint16_t pixel, uint8_t opacity) {
   uint32_t keep = 255u - opacity;
@@ -32,6 +37,10 @@ static int scale(int value, int short_side) {
 }
 
 static int corner_radius(int short_side) {
+  if (configured_corner_radius > 0) {
+    int radius = configured_corner_radius;
+    return radius * 2 > short_side ? short_side / 2 : radius;
+  }
 #if defined(__ZEPHYR__)
   int radius = CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS;
 #else
@@ -40,6 +49,10 @@ static int corner_radius(int short_side) {
   if (radius < 1) radius = 1;
   if (radius * 2 > short_side) radius = short_side / 2;
   return radius;
+}
+
+int dte_filter_corner_radius(void) {
+  return configured_corner_radius;
 }
 
 static uint8_t edge_opacity(int x, int y, int width, int height, int side,

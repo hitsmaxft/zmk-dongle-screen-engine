@@ -58,14 +58,18 @@ bytes: 134,400 bytes of RGB565 pixels, 4,096 bytes of transfer scratch and
 
 `CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT` enables an allocation-free RGB565
 post-process after Theme drawing and before tile hashing. It adds asymmetric
-non-linear edge darkening, 18 px rounded black corners, a weak mint top
-reflection and a slightly darker bottom edge. It performs no barrel warp and
-adds no framebuffer. The default remains off, so existing Theme output and ABI
-1.3 descriptors are unchanged.
+non-linear edge darkening, configurable rounded black corners, a mint top
+reflection and a darker bottom edge. Firmware uses
+`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS`; it performs no barrel
+warp and adds no framebuffer. The default remains off, so existing Theme
+output and ABI 1.3 descriptors are unchanged.
 
 The WASM preview exposes the same filter under **Animation parameters → Frame
-filter**. Switching it redraws the scene without resetting Theme time, input or
-locale. `render_wasm.cjs` accepts `--filter crt` for browser-free PNG evidence.
+filter** and a live corner-radius slider. These controls redraw without
+resetting Theme time, input or locale. The default physical mask is a generic
+1.69-inch rounded screen at R43; it affects only browser presentation.
+`render_wasm.cjs` accepts `--filter crt --filter-radius 43` for browser-free
+PNG evidence.
 
 ![CRT glass filter preview](docs/images/crt-filter-mac-tiled.png)
 

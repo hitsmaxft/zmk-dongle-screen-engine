@@ -24,6 +24,7 @@ options:
   --split1-battery N        battery percentage (default: 64)
   --connected 0|1           split connection state (default: 1)
   --filter none|crt         Engine framebuffer filter (default: none)
+  --filter-radius PX        CRT inner-corner radius (default: 24)
   --call NAME=A,B           call an exported integer setter; repeatable
   --gesture KIND@MS         apply a gesture before rendering; repeatable
 `);
@@ -42,13 +43,13 @@ function parse(argv) {
     width: 280, height: 240,
     wpm: 72, layer: 0, layerName: 'BASE', endpoint: 2, mods: 0,
     batteryCount: 3, dongleBattery: 93, split0Battery: 87,
-    split1Battery: 64, connected: 1, filter: 'none', calls: [], gestures: [],
+    split1Battery: 64, connected: 1, filter: 'none', filterRadius: 24, calls: [], gestures: [],
   };
   const numeric = new Map([
     ['--time', 'time'], ['--frames', 'frames'], ['--fps', 'fps'],
     ['--width', 'width'], ['--height', 'height'],
     ['--wpm', 'wpm'], ['--layer', 'layer'], ['--endpoint', 'endpoint'],
-    ['--mods', 'mods'], ['--battery-count', 'batteryCount'],
+    ['--mods', 'mods'], ['--battery-count', 'batteryCount'], ['--filter-radius', 'filterRadius'],
     ['--dongle-battery', 'dongleBattery'], ['--split0-battery', 'split0Battery'],
     ['--split1-battery', 'split1Battery'], ['--connected', 'connected'],
   ]);
@@ -81,6 +82,7 @@ function parse(argv) {
   if (![2, 3].includes(options.batteryCount)) usage('--battery-count must be 2 or 3');
   if (![0, 1].includes(options.connected)) usage('--connected must be 0 or 1');
   if (!['none', 'crt'].includes(options.filter)) usage('--filter must be none or crt');
+  if (options.filterRadius < 0 || options.filterRadius > 120) usage('--filter-radius must be 0..120');
   return options;
 }
 
@@ -142,6 +144,7 @@ function setLayerName(api, value) {
   const api = instance.exports;
   api.dte_init(options.width, options.height);
   if (api.dte_preview_set_filter) api.dte_preview_set_filter(options.filter === 'crt' ? 1 : 0);
+  if (api.dte_preview_set_filter_corner_radius) api.dte_preview_set_filter_corner_radius(options.filterRadius);
   api.dte_set_battery_count(options.batteryCount);
   api.dte_set_state(options.wpm, options.layer, options.endpoint, 1, options.mods,
     options.split0Battery, options.split1Battery, options.dongleBattery, 1,

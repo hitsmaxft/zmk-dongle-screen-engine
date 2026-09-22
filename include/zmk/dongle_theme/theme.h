@@ -161,6 +161,8 @@ int dte_preview_set_strip_pixels(int pixels);
 int dte_preview_set_filter(int filter);
 int dte_preview_filter(void);
 uint32_t dte_preview_filter_pixels(void);
+int dte_preview_set_filter_corner_radius(int radius);
+int dte_preview_filter_corner_radius(void);
 uint32_t dte_preview_transfer_bytes(void);
 uint32_t dte_preview_dirty_rects(void);
 uint32_t dte_preview_draw_calls(void);

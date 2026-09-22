@@ -88,14 +88,16 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 Engine filter 必须位于 Theme draw 之后、tile hash 之前，并使用 scene 坐标；如此
 同一 Theme 的 full canvas 与分区 canvas 方能逐像素一致。CRT filter 只作非线性
 暗角、圆角、顶部弱高光及底部加深，不作 barrel warp。固件以
-`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT` 开启，默认关闭；WASM 参数区可即时切换，
-不得重置 Theme 时间、输入或 locale。
+`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT` 开启，
+`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS` 指定固件物理圆角；WASM
+参数区可即时切换滤镜及圆角半径，且不得重置 Theme 时间、输入或 locale。默认
+屏幕遮罩为不涉品牌的 1.69 英寸圆角屏（R43），其仅裁切浏览器呈现。
 
 直接生成滤镜证据，不须启浏览器：
 
 ```sh
 node scripts/render_wasm.cjs .build/default-v001 \
-  --time 1000 --filter crt --output .build/default-v001/crt.png
+  --time 1000 --filter crt --filter-radius 43 --output .build/default-v001/crt.png
 ```
 
 ## GitHub Actions preview
