@@ -19,6 +19,7 @@ void dtr_damage_begin(void);
 void dtr_damage_all(void);
 void dtr_damage_rect(int x, int y, int width, int height);
 void dtr_damage_ring(int cx, int cy, int inner, int outer);
+void dtr_damage_arc(int cx, int cy, int inner, int outer, int first, int last);
 int dtr_damage_any(void);
 const uint32_t *dtr_dirty_tiles(void);
 void dtr_clear(int r, int g, int b);

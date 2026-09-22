@@ -161,6 +161,27 @@ void dtr_damage_ring(int cx, int cy, int inner, int outer) {
         damage[ty] |= 1u << tx;
     }
 }
+void dtr_damage_arc(int cx,int cy,int inner,int outer,int first,int last){
+  if(region_override||outer<=inner)return;
+  while(last<=first)last+=360;
+  if(last-first>=360){dtr_damage_ring(cx,cy,inner,outer);return;}
+  for(int begin=first;begin<last;){
+    int end=begin+15;if(end>last)end=last;
+    int left=cx+outer+2,right=cx-outer-2,top=cy+outer+2,bottom=cy-outer-2;
+    for(int sample=0;sample<3;sample++){
+      int angle=sample==0?begin:sample==1?(begin+end)/2:end;
+      for(int edge=0;edge<2;edge++){
+        int radius=edge?outer:inner;
+        int x=cx+radius*dtr_trig(angle+90)/32767;
+        int y=cy+radius*dtr_trig(angle)/32767;
+        if(x<left)left=x;if(x>right)right=x;
+        if(y<top)top=y;if(y>bottom)bottom=y;
+      }
+    }
+    dtr_damage_rect(left-3,top-3,right-left+7,bottom-top+7);
+    begin=end;
+  }
+}
 void dtr_clear(int r, int g, int b) {
   if (!fb)
     return;

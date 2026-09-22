@@ -23,5 +23,11 @@ int main(void) {
     }
   }
   assert(signatures[0]!=signatures[1]&&signatures[1]!=signatures[2]&&signatures[0]!=signatures[2]);
+  dtr_begin(pixels,280,240);dtr_damage_begin();
+  dtr_damage_arc(140,120,88,118,-90,-45);
+  const uint32_t *damage=dtr_dirty_tiles();int tiles=0;
+  for(int row=0;row<15;row++)for(int col=0;col<18;col++)
+    tiles+=(damage[row]>>col)&1u;
+  assert(tiles>0&&tiles<30);
   return 0;
 }
