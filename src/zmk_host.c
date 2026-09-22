@@ -192,11 +192,14 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
     if(n>(int)(sizeof(packed_pixels)/sizeof(packed_pixels[0]))){
       transfer_failed=true;LOG_ERR("full-frame tile rectangle exceeds scratch");break;
     }
-    int p=0;
-    for(int y=0;y<rect.height;y++)for(int x=0;x<rect.width;x++)
-      packed_pixels[p++]=full_pixels[(rect.y+y)*dte_width()+rect.x+x];
-    if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
-      packed_pixels[i]=__builtin_bswap16(packed_pixels[i]);
+    int stride=dte_width();
+    uint16_t *dst=packed_pixels;
+    const uint16_t *row=full_pixels+rect.y*stride+rect.x;
+    for(int y=0;y<rect.height;y++,row+=stride)
+      for(int x=0;x<rect.width;x++){
+        uint16_t pixel=row[x];
+        *dst++=IS_ENABLED(CONFIG_LV_COLOR_16_SWAP)?__builtin_bswap16(pixel):pixel;
+      }
     struct display_buffer_descriptor desc={.width=rect.width,.height=rect.height,
       .pitch=rect.width,.buf_size=(size_t)n*2u};
     uint32_t write_started=k_cycle_get_32();

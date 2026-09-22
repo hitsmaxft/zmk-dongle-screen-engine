@@ -37,7 +37,9 @@ def generate(lvgl, output):
     distances=[math.sqrt(x*x+y*y) for y in range(128) for x in range(128)]
     radii=[struct.unpack('<I',struct.pack('<f',v))[0] for v in distances]
     lines.append('#if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)')
-    lines.append('static const uint16_t dtr_distance_q8[128*128]={'+','.join(str(round(v*256)) for v in distances)+'};')
+    # Symmetry stores each (x,y)/(y,x) pair once and covers the 134px side arcs.
+    triangular=[round(math.sqrt(x*x+y*y)*256) for x in range(141) for y in range(x+1)]
+    lines.append('static const uint16_t dtr_distance_q8[141*142/2]={'+','.join(map(str,triangular))+'};')
     lines.append('#else')
     lines.append('static const uint32_t dtr_distance_bits[128*128]={'+','.join(hex(v) for v in radii)+'};')
     lines.append('#endif')

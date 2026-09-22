@@ -50,6 +50,11 @@ void dtr_spindle(int cx, int cy, int inner, int outer, int angle,
                  int half_width, int r, int g, int b, int alpha);
 void dtr_arc(int cx, int cy, int inner, int outer, int first, int last, int r,
              int g, int b, int alpha);
+struct dtr_rgb8 { uint8_t r, g, b; };
+/* Adjacent one-pixel radial bands, composed in increasing radius order.
+ * Equivalent to count dtr_arc() calls with [inner+i,inner+i+1] radii. */
+void dtr_arc_bands(int cx,int cy,int inner,int first,int last,
+                   const struct dtr_rgb8 *colors,int count,int alpha);
 void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
                int r, int g, int b, int alpha);
 /* 0..255 stable spatial density, limited to this arc and reset on return. */

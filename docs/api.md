@@ -224,6 +224,15 @@ text and metallic ring helpers. Retained themes may declare 16×16 tile damage
 with `dtr_damage_begin()`, `dtr_damage_rect()`, `dtr_damage_ring()` and
 `dtr_damage_all()`.
 
+`dtr_arc_bands(cx, cy, inner, first, last, colors, count, alpha)` draws adjacent
+one-pixel radial bands in increasing-radius order. `colors` points to `count`
+`dtr_rgb8` entries. Its output matches individual `dtr_arc()` calls, including
+overlapping antialiased edges. Speed builds share geometry calculations across
+bands; other builds use the individual-arc path. The call allocates no buffer.
+
+`dtr_clear_disc_background()` restores a two-color disc background as clipped
+scanline spans. It respects retained tile damage and canvas origin/stride.
+
 `zmk/dongle_theme/ui.h` provides allocation-free sprite and small UI helpers.
 Theme palettes, layouts, animation policy, fonts and asset payloads remain in
 the Theme module.

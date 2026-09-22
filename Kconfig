@@ -16,6 +16,7 @@ config ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED
     help
       Compile Engine raster and transport code with -O3. Enable only after
       checking the final firmware map against the board's Flash budget.
+      Use Q8 distance and Q15 arc coverage with a symmetric distance table.
 
 config ZMK_DONGLE_SCREEN_MAX_THROUGHPUT
     bool "Immediately continue an over-budget animation"

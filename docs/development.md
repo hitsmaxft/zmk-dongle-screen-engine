@@ -72,6 +72,12 @@ Neither path guarantees tear-free output without panel synchronization.
 
 Arcs and spindle pointers use conservative scanline bounds. The fixed-point
 arc path also rejects pixels outside angular coverage before distance lookup.
+Use `dtr_arc_bands()` for adjacent one-pixel bands instead of repeating geometry
+work. Speed builds store symmetric Q8 distances in a 141-axis triangular table
+(20,022 bytes), covering side arcs beyond the older 128-axis square table.
+Background fills process contiguous damaged spans; per-pixel color and damage
+decisions are unnecessary for a solid run. Both optimizations preserve RGB565
+output and need no additional framebuffer.
 Two optional firmware settings affect performance:
 
 - `CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED` selects Engine `-O3` and Q8/Q15

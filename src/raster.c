@@ -204,6 +204,25 @@ void dtr_damage_arc(int cx,int cy,int inner,int outer,int first,int last){
     begin=end;
   }
 }
+/* Callers clip [left,right) to the canvas. Decide damage once per tile run,
+ * then fill contiguous RGB565 words without per-pixel predicates. */
+static void fill_span(int left,int right,int y,uint16_t color) {
+  if(left>=right)return;
+  uint32_t mask=UINT32_MAX;
+  if(region_override&&canvas_damage)
+    mask=(y>>4)<canvas_damage_rows?canvas_damage[y>>4]:0;
+  else if(!region_override&&damage_enabled)mask=damage[y>>4];
+  for(int x=left;x<right;){
+    int edge=((x>>4)+1)<<4;
+    if(!(mask&(1u<<(x>>4)))){x=edge;continue;}
+    while(edge<right&&(mask&(1u<<(edge>>4))))edge+=16;
+    if(edge>right)edge=right;
+    uint16_t *p=&fb[(y-OY)*STRIDE+x-OX];
+    int count=edge-x;
+    while(count--)*p++=color;
+    x=edge;
+  }
+}
 void dtr_clear(int r, int g, int b) {
   if (!fb)
     return;
@@ -212,26 +231,8 @@ void dtr_clear(int r, int g, int b) {
       top = dtr_clip.top > OY ? dtr_clip.top : OY;
   int right = dtr_clip.right < OX + TW ? dtr_clip.right : OX + TW;
   int bottom = dtr_clip.bottom < OY + TH ? dtr_clip.bottom : OY + TH;
-  if (region_override && canvas_damage) {
-    for (int y = top; y < bottom; y++) {
-      uint32_t bits = (y >> 4) < canvas_damage_rows ? canvas_damage[y >> 4] : 0;
-      for (int x = left; x < right;) {
-        int edge = ((x >> 4) + 1) << 4;
-        if (edge > right)
-          edge = right;
-        if (bits & (1u << (x >> 4)))
-          for (; x < edge; x++)
-            fb[(y - OY) * STRIDE + x - OX] = color;
-        else
-          x = edge;
-      }
-    }
-    return;
-  }
   for (int y = top; y < bottom; y++)
-    for (int x = left; x < right; x++)
-      if (dirty_pixel(x, y))
-        fb[(y - OY) * STRIDE + x - OX] = color;
+    fill_span(left,right,y,color);
 }
 void dtr_clear_disc_background(int cx,int cy,int radius,
                                int outer_r,int outer_g,int outer_b,
@@ -245,22 +246,21 @@ void dtr_clear_disc_background(int cx,int cy,int radius,
   int bottom=dtr_clip.bottom<OY+TH?dtr_clip.bottom:OY+TH;
   int radius2=radius*radius;
   for(int y=top;y<bottom;y++){
-    int dy=y-cy,dx=left-cx,d2=dx*dx+dy*dy;
-    for(int x=left;x<right;){
-      int edge=((x>>4)+1)<<4;if(edge>right)edge=right;
-      if(!dirty_pixel(x,y)){
-        int jump=edge-x;d2+=jump*(2*dx+jump);dx+=jump;x=edge;continue;
-      }
-      fb[(y-OY)*STRIDE+x-OX]=d2<radius2?inner:outer;
-      d2+=2*dx+1;dx++;x++;
-    }
+    int dy=y-cy,edge2=radius2-dy*dy-1;
+    if(edge2<0){fill_span(left,right,y,outer);continue;}
+    int edge=(int)dtr_root(edge2);
+    int a=cx-edge,b=cx+edge+1;
+    if(a<left)a=left;if(a>right)a=right;
+    if(b<left)b=left;if(b>right)b=right;
+    fill_span(left,a,y,outer);fill_span(a,b,y,inner);fill_span(b,right,y,outer);
   }
 }
 void dtr_hide_text(int hidden) { hide_text = hidden; }
 #if defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
 static int distance_q8_xy(int x,int y){
   unsigned ax=x<0?-x:x,ay=y<0?-y:y;
-  if(ax<128&&ay<128)return dtr_distance_q8[ay*128+ax];
+  if(ax<ay){unsigned t=ax;ax=ay;ay=t;}
+  if(ax<141)return dtr_distance_q8[ax*(ax+1)/2+ay];
   return (int)(dtr_root((float)(x*x+y*y))*256+.5f);
 }
 #else
@@ -508,6 +508,90 @@ void dtr_spindle(int cx, int cy, int inner, int outer, int angle,
 void dtr_arc(int cx, int cy, int inner, int outer, int first, int last, int r,
              int g, int b, int alpha) {
   dtr_arc_f(cx, cy, inner, outer, first, last, r, g, b, alpha);
+}
+void dtr_arc_bands(int cx,int cy,int inner,int first,int last,
+                   const struct dtr_rgb8 *colors,int count,int alpha) {
+  if(!fb||!colors||count<=0||inner<0||alpha<=0)return;
+#if !defined(CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED)
+  for(int i=0;i<count;i++)
+    dtr_arc(cx,cy,inner+i,inner+i+1,first,last,
+            colors[i].r,colors[i].g,colors[i].b,alpha);
+#else
+  PROFILE_BEGIN;
+  int outer=inner+count;
+  int left=cx-outer-1,right=cx+outer+1,top=cy-outer-1,bottom=cy+outer+1;
+  if(last>first&&last-first<360){
+    float minx=outer,maxx=-outer,miny=outer,maxy=-outer;
+    for(int i=0;i<6;i++){
+      int angle=i==0?first:i==1?last:(i-2)*90;
+      int delta=(angle-first)%360;if(delta<0)delta+=360;
+      if(i>=2&&delta>last-first)continue;
+      for(int j=0;j<2;j++){
+        int radius=j?outer:inner;
+        float xx=radius*(dtr_trig(angle+90)/32767.f);
+        float yy=radius*(dtr_trig(angle)/32767.f);
+        if(xx<minx)minx=xx;if(xx>maxx)maxx=xx;
+        if(yy<miny)miny=yy;if(yy>maxy)maxy=yy;
+      }
+    }
+    left=cx+(int)minx-2;right=cx+(int)maxx+2;
+    top=cy+(int)miny-2;bottom=cy+(int)maxy+2;
+  }
+  if(left<dtr_clip.left)left=dtr_clip.left;
+  if(right>=dtr_clip.right)right=dtr_clip.right-1;
+  if(top<dtr_clip.top)top=dtr_clip.top;
+  if(bottom>=dtr_clip.bottom)bottom=dtr_clip.bottom-1;
+  if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
+  if(top<OY)top=OY;if(bottom>=OY+TH)bottom=OY+TH-1;
+  if(left<0)left=0;if(right>=W)right=W-1;
+  if(top<0)top=0;if(bottom>=H)bottom=H-1;
+  if(!dirty_rect(left,top,right-left+1,bottom-top+1)){PROFILE_END(1);return;}
+  int sx=dtr_trig(first+90),sy=dtr_trig(first);
+  int ex=dtr_trig(last+90),ey=dtr_trig(last);
+  int hole_radius=inner>0?inner-1:0;
+  for(int y=top;y<=bottom;y++){
+    int dy=y-cy,edge2=(outer+1)*(outer+1)-dy*dy;
+    if(edge2<0)continue;
+    int edge=(int)dtr_root(edge2)+1;
+    int hole2=hole_radius*hole_radius-dy*dy;
+    int hole=hole2>0?(int)dtr_root(hole2):0;
+    int start=left>cx-edge?left:cx-edge,end=right<cx+edge?right:cx+edge;
+    for(int x=start;x<=end;x++){
+      if(!dirty_pixel(x,y)){x=((x/16)+1)*16-1;continue;}
+      if(hole>0&&x>cx-hole&&x<cx+hole){x=cx+hole-1;continue;}
+      int dx=x-cx;
+      int64_t cross1=(int64_t)sx*dy-(int64_t)sy*dx;
+      int64_t cross2=(int64_t)dx*ey-(int64_t)dy*ex;
+      if(last-first<=180){if(cross1<=-16384||cross2<=-16384)continue;}
+      else if(cross1<=-16384&&cross2<=-16384)continue;
+      int c1=(int)(cross1+16384),c2=(int)(cross2+16384),outside=0;
+      if(c1<0)c1=0;else if(c1>32767)c1=32767;
+      if(c2<0)c2=0;else if(c2>32767)c2=32767;
+      if(last-first>180){
+        int o1=(int)(-cross1+16384),o2=(int)(-cross2+16384);
+        if(o1<0)o1=0;else if(o1>32767)o1=32767;
+        if(o2<0)o2=0;else if(o2>32767)o2=32767;
+        outside=(o1*o2+16384)>>15;
+      }
+      int relative=distance_q8_xy(dx,dy)-inner*256;
+      int lo=(relative-384)/256,hi=(relative+128)/256;
+      if(lo<0)lo=0;if(hi>=count)hi=count-1;
+      for(int i=lo;i<=hi;i++){
+        /* Match dtr_arc_f's radius-zero squared-distance predicate. */
+        if(inner+i==0&&dx==0&&dy==0)continue;
+        int radial_in=relative-i*256+128,radial_out=(i+1)*256+128-relative;
+        if(radial_in<=0||radial_out<=0)continue;
+        if(radial_in>256)radial_in=256;if(radial_out>256)radial_out=256;
+        int coverage=(radial_in*radial_out*32767)>>16;
+        if(last-first<=180){coverage=(coverage*c1+16384)>>15;coverage=(coverage*c2+16384)>>15;}
+        else coverage=(coverage*(32767-outside)+16384)>>15;
+        int opacity=(coverage*alpha+16384)>>15;
+        if(opacity)dtr_pixel(x,y,colors[i].r,colors[i].g,colors[i].b,opacity);
+      }
+    }
+  }
+  PROFILE_END(1);
+#endif
 }
 void dtr_arc_density(int cx, int cy, float inner, float outer, int first,
                      int last, int r, int g, int b, int alpha, int density) {
@@ -788,10 +872,7 @@ static void fill_flat_disc(int cx,int cy,int radius,uint16_t color){
     if(right>=dtr_clip.right)right=dtr_clip.right-1;
     if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
     if(left<0)left=0;if(right>=W)right=W-1;
-    for(int x=left;x<=right;){
-      if(!dirty_pixel(x,y)){x=((x>>4)+1)<<4;continue;}
-      fb[(y-OY)*STRIDE+x-OX]=color;x++;
-    }
+    fill_span(left,right+1,y,color);
   }
 }
 static void metal_ring_cached(int cx, int cy, int R, int thickness,
