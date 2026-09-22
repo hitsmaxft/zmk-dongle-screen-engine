@@ -99,6 +99,18 @@ per-scanline use from per-pixel use. Hoist invariant division out of pixel
 loops and cache integer coordinate transforms before replacing ordinary float
 addition or multiplication.
 
+Audit the linked image after a firmware build:
+
+```sh
+python3 scripts/audit_arm_math.py build/zephyr/zmk.elf \
+  --objdump /path/to/arm-zephyr-eabi-objdump \
+  --output .build/arithmetic-audit.json
+```
+
+The command fails if selected hot functions call double helpers, 64-bit
+division helpers or trigonometric/power libm entry points. Its instruction
+counts are static; use firmware profiling to determine execution frequency.
+
 ## Filters and physical mask
 
 Filters run after drawing and before hashing, in scene coordinates. CRT adds
