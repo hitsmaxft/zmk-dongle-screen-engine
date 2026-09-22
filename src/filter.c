@@ -31,6 +31,17 @@ static int scale(int value, int short_side) {
   return scaled < 1 ? 1 : scaled;
 }
 
+static int corner_radius(int short_side) {
+#if defined(__ZEPHYR__)
+  int radius = CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS;
+#else
+  int radius = scale(24, short_side);
+#endif
+  if (radius < 1) radius = 1;
+  if (radius * 2 > short_side) radius = short_side / 2;
+  return radius;
+}
+
 static uint8_t edge_opacity(int x, int y, int width, int height, int side,
                             int top, int bottom) {
   int left_d = x, right_d = width - 1 - x;
@@ -55,7 +66,7 @@ uint32_t dte_filter_apply(uint8_t type, const struct dte_canvas *canvas) {
   int width = canvas->scene_width, height = canvas->scene_height;
   int short_side = width < height ? width : height;
   int side = scale(16, short_side), top = scale(12, short_side);
-  int bottom = scale(18, short_side), radius = scale(24, short_side);
+  int bottom = scale(18, short_side), radius = corner_radius(short_side);
   int highlight_y0 = scale(4, short_side), highlight_y1 = scale(6, short_side);
   int highlight_inset = scale(16, short_side);
   uint16_t highlight = (uint16_t)(((0xa8u >> 3) << 11) |

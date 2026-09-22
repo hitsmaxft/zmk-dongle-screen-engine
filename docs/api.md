@@ -183,7 +183,9 @@ Theme draw -> frame filter -> tile hash -> wire conversion -> display
 ```
 
 The built-in CRT filter is selected in firmware with
-`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT`. Native/WASM tools use
+`CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT`; its physical inner-corner radius is
+configured by `CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS` (default
+24 px, clamped to half the short side). Native/WASM tools use
 `dte_preview_set_filter(DTE_FILTER_CRT)` and report the number of inspected
 pixels through `dte_preview_filter_pixels()`. The filter uses integer RGB565
 blending and a constant opacity table; it allocates no framebuffer and performs

@@ -47,6 +47,15 @@ config ZMK_DONGLE_SCREEN_FILTER_CRT
       weak top highlight after Theme drawing. This performs no barrel warp and
       allocates no additional framebuffer.
 
+config ZMK_DONGLE_SCREEN_FILTER_CRT_CORNER_RADIUS
+    int "CRT filter inner corner radius (px)"
+    default 24
+    range 1 120
+    depends on ZMK_DONGLE_SCREEN_FILTER_CRT
+    help
+      Radius of the filter's inner black glass corners in physical panel
+      pixels. The value is clamped to half of the shortest screen side.
+
 config ZMK_DONGLE_SCREEN_STRIP_PIXELS
     int "Maximum RGB565 pixels in the firmware render strip"
     default 4480
