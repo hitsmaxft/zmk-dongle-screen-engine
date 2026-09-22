@@ -6,6 +6,7 @@
   const model=window.dteHardwareModel,canvas=document.querySelector('#screen'),screenShell=document.querySelector('.screen'),ctx=canvas.getContext('2d',{alpha:false});
   let time=0,last=null,running=true,demo=true,index=0,mods=0,offline=false,unknown=false,statusMode='auto',lastAction=0;
   let hardwareReadyAt=0,nextFrameAt=0,metricsStart=0,logicalCount=0,presentedCount=0,droppedCount=0;
+  let interactionFrames=0,interactionStep=0,interactionEnd=0,interactionWait=0;
   let logicalFps=60,presentedFps=60,browserFps=0,droppedPercent=0,lastWasmMs=0,lastTransfer={tiles:0,bytes:0,rects:0},lastEstimate={renderMs:0,transferMs:0,totalMs:0};
   const sequence=[[900,0],[2000,2],[3400,4],[4300,3],[5600,-1],[7000,2],[8500,3],[9600,6]];
   api.dte_init(280,240);
@@ -24,12 +25,53 @@
   function updateMetrics(){const t=window.dteI18n.t,profile=hardwareProfile(),capacity=profile.sramBytes?`\n${t('sram_capacity')}: ${formatBytes(profile.sramBytes)}\n${t('flash_capacity')}: ${formatBytes(profile.flashBytes)}`:'';$('hardware-metrics').textContent=`${t('logical_fps')}: ${logicalFps.toFixed(1)}\n${t('presented_fps')}: ${presentedFps.toFixed(1)}\n${t('browser_fps')}: ${browserFps.toFixed(1)}\n${t('frame_budget')}: ${lastEstimate.frameBudgetMs.toFixed(2)} ms\n${t('render_cost')}: ${lastEstimate.renderMs.toFixed(2)} ms (${lastWasmMs.toFixed(3)} ms WASM)\n${t('filtered_pixels')}: ${api.dte_preview_filter_pixels?.()||0}\n${t('transfer_cost')}: ${lastEstimate.transferMs.toFixed(2)} ms\n${t('spi_utilization')}: ${lastEstimate.spiUtilization.toFixed(1)}%\n${t('dirty_tiles')}: ${lastTransfer.tiles}\n${t('dirty_rects')}: ${lastTransfer.rects}\n${t('strip_draws')}: ${lastTransfer.writes}\n${t('dirty_area')}: ${lastTransfer.dirtyPercent.toFixed(1)}%\n${t('transfer_bytes')}: ${formatBytes(lastTransfer.bytes)}/frame\n${t('transfer_rate')}: ${formatBytes(lastEstimate.bytesPerSecond)}/s\n${t('strip_ram')}: ${formatBytes(lastEstimate.stripRamBytes)}\n${t('full_frame_ram')}: ${formatBytes(lastTransfer.fullBytes)}${capacity}\n${t('dropped_frames')}: ${droppedPercent.toFixed(1)}%`;}
   function localizeDynamic(){const t=window.dteI18n.t;$('play').textContent=t(running?'pause':'continue');$('status').textContent=statusMode==='auto'?t('auto'):t('interactive')+' · '+(statusMode==='gesture'?t('shared_gesture'):t('actions')[lastAction]);updateMetrics();}
   function stopDemo(resetWpm=false){if(!demo)return;demo=false;index=sequence.length;if(resetWpm){time=0;hardwareReadyAt=nextFrameAt=0;$('wpm').value=72;$('wpm-value').value=72;api.dte_init(...$('resolution').value.split(',').map(Number));state();api.dte_render(0);}}
-  function action(g){stopDemo(g===1);statusMode='action';lastAction=g;api.dte_gesture(g,Math.round(time));renderFrame(false);localizeDynamic();}
+  function wakeAnimation(){interactionFrames=0;running=true;hardwareReadyAt=time;nextFrameAt=time+1000/hardwareProfile().fps;}
+  function syncInteraction(){
+    const profile=hardwareProfile(),duration=Math.max(1,api.dte_get_animation_duration?.()||550);
+    const interval=1000/profile.fps;
+    /* Hardware simulation serializes four meaningful transition phases rather
+       than dropping directly to the final pose.  Unlimited playback keeps its
+       configured cadence. */
+    interactionFrames=profile.unlimited?Math.max(2,Math.ceil(duration/interval)):4;
+    interactionStep=duration/interactionFrames;interactionEnd=time+duration;
+    interactionWait=profile.unlimited?interval:Math.max(interval,lastEstimate.totalMs);
+  }
+  function action(g){
+    stopDemo(g===1);
+    /* A prior frame may leave the simulated device busy beyond the next
+       gesture.  A real input starts a new presentation deadline; do likewise
+       so repeated clicks cannot spend their whole transition behind a stale
+       hardware gate. */
+    wakeAnimation();
+    statusMode='action';lastAction=g;api.dte_gesture(g,Math.round(time));renderFrame(false);syncInteraction();localizeDynamic();
+  }
   function updateOutputs(){$('target-fps-value').value=$('target-fps').value;$('spi-clock-value').value=$('spi-clock').value;$('cpu-scale-value').value=$('cpu-scale').value+'×';$('filter-radius-value').value=$('filter-radius').value+' px';}
-  function applyProfile(name){$('hardware-profile').value=name;const p=model.profiles[name];if(p&&!p.unlimited){$('target-fps').value=p.fps;$('spi-clock').value=p.spiMHz;$('cpu-scale').value=p.cpuScale;$('transport').value=p.transport;}const disabled=!!p?.unlimited;for(const id of ['target-fps','spi-clock','cpu-scale','transport'])$(id).disabled=disabled;updateOutputs();hardwareReadyAt=nextFrameAt=time;renderFrame(false);}
+  function applyProfile(name){interactionFrames=0;$('hardware-profile').value=name;const p=model.profiles[name];if(p&&!p.unlimited){$('target-fps').value=p.fps;$('spi-clock').value=p.spiMHz;$('cpu-scale').value=p.cpuScale;$('transport').value=p.transport;}const disabled=!!p?.unlimited;for(const id of ['target-fps','spi-clock','cpu-scale','transport'])$(id).disabled=disabled;updateOutputs();hardwareReadyAt=nextFrameAt=time;renderFrame(false);}
   function markCustom(){if($('hardware-profile').value!=='custom')$('hardware-profile').value='custom';for(const id of ['target-fps','spi-clock','cpu-scale','transport'])$(id).disabled=false;updateOutputs();hardwareReadyAt=nextFrameAt=time;}
-  function tick(t){if(last===null){last=t;metricsStart=t;}if(running){time+=Math.min(t-last,100);if(demo){while(index<sequence.length&&time>=sequence[index][0]){const [at,g]=sequence[index];if(g<=0){$('wpm').value=g===0?128:72;$('wpm-value').value=$('wpm').value;state();api.dte_render(at);}else api.dte_gesture(g,at);index++;}if(time>11000)reset();}const profile=hardwareProfile(),interval=1000/profile.fps;if(!nextFrameAt)nextFrameAt=time;if(time+0.01>=nextFrameAt){const due=Math.max(1,Math.floor((time-nextFrameAt)/interval)+1);logicalCount+=due;nextFrameAt+=due*interval;if(profile.unlimited||time>=hardwareReadyAt)renderFrame(true);else droppedCount+=due;if(time-nextFrameAt>1000)nextFrameAt=time+interval;}}if(t-metricsStart>=500){const elapsed=t-metricsStart,profile=hardwareProfile();browserFps=presentedCount*1000/elapsed;logicalFps=profile.fps;const budget=profile.unlimited?profile.fps:(lastEstimate.totalMs>0?1000/lastEstimate.totalMs:profile.fps);presentedFps=Math.min(profile.fps,budget);droppedPercent=logicalFps?Math.max(0,(logicalFps-presentedFps)*100/logicalFps):0;logicalCount=presentedCount=droppedCount=0;metricsStart=t;updateMetrics();}last=t;requestAnimationFrame(tick);}
-  function reset(){time=0;index=0;hardwareReadyAt=nextFrameAt=0;$('wpm').value=72;$('wpm-value').value=72;api.dte_init(...$('resolution').value.split(',').map(Number));state();demo=true;running=true;statusMode='auto';renderFrame(false);localizeDynamic();}
+  function tick(t){
+    if(last===null){last=t;metricsStart=t;}
+    const elapsed=Math.min(t-last,100);
+    if(running){
+      const profile=hardwareProfile(),interval=1000/profile.fps;
+      if(interactionFrames>0){
+        interactionWait-=elapsed;
+        if(interactionWait<=0){
+          time=interactionFrames===1?interactionEnd:Math.min(interactionEnd,time+interactionStep);
+          renderFrame(true);interactionFrames--;
+          interactionWait=profile.unlimited?interval:Math.max(interval,lastEstimate.totalMs);
+          if(!interactionFrames){hardwareReadyAt=time+lastEstimate.totalMs;nextFrameAt=time+interval;}
+        }
+      }else{
+        time+=elapsed;
+        if(demo){while(index<sequence.length&&time>=sequence[index][0]){const [at,g]=sequence[index];if(g<=0){$('wpm').value=g===0?128:72;$('wpm-value').value=$('wpm').value;state();api.dte_render(at);}else api.dte_gesture(g,at);index++;}if(time>11000)reset();}
+        if(!nextFrameAt)nextFrameAt=time;
+        if(time+0.01>=nextFrameAt){const due=Math.max(1,Math.floor((time-nextFrameAt)/interval)+1);logicalCount+=due;nextFrameAt+=due*interval;if(profile.unlimited||time>=hardwareReadyAt)renderFrame(true);else droppedCount+=due;if(time-nextFrameAt>1000)nextFrameAt=time+interval;}
+      }
+    }
+    if(t-metricsStart>=500){const elapsed=t-metricsStart,profile=hardwareProfile();browserFps=presentedCount*1000/elapsed;logicalFps=profile.fps;const budget=profile.unlimited?profile.fps:(lastEstimate.totalMs>0?1000/lastEstimate.totalMs:profile.fps);presentedFps=Math.min(profile.fps,budget);droppedPercent=logicalFps?Math.max(0,(logicalFps-presentedFps)*100/logicalFps):0;logicalCount=presentedCount=droppedCount=0;metricsStart=t;updateMetrics();}
+    last=t;requestAnimationFrame(tick);
+  }
+  function reset(){time=0;index=interactionFrames=0;hardwareReadyAt=nextFrameAt=0;$('wpm').value=72;$('wpm-value').value=72;api.dte_init(...$('resolution').value.split(',').map(Number));state();demo=true;running=true;statusMode='auto';renderFrame(false);localizeDynamic();}
   async function switchRenderProfile(name){
     if(name===activeProfile)return;const animation=api.dte_get_animation?.(),duration=api.dte_get_animation_duration?.();
     api=(await loadModule(name)).exports;activeProfile=name;api.dte_init(...$('resolution').value.split(',').map(Number));state();
@@ -44,10 +86,10 @@
   $('hardware-profile').onchange=e=>applyProfile(e.target.value);for(const id of ['target-fps','spi-clock','cpu-scale','transport'])$(id).oninput=markCustom;
   $('frame-filter').onchange=()=>renderFrame(false);$('filter-radius').oninput=()=>{updateOutputs();renderFrame(false);};$('screen-mask').onchange=()=>{updateScreenMask(canvas.width,canvas.height);};
   profileSelect.onchange=e=>switchRenderProfile(e.target.value).catch(error=>{profileSelect.value=activeProfile;$('error').textContent=window.dteI18n.t('load_error')+error.message;});
-  $('resolution').onchange=reset;$('play').onclick=()=>{running=!running;localizeDynamic();};$('step').onclick=()=>{running=false;time+=1000/hardwareProfile().fps;renderFrame(true);localizeDynamic();};$('replay').onclick=reset;
+  $('resolution').onchange=reset;$('play').onclick=()=>{running=!running;localizeDynamic();};$('step').onclick=()=>{interactionFrames=0;running=false;time+=1000/hardwareProfile().fps;renderFrame(true);localizeDynamic();};$('replay').onclick=reset;
   let contact=null,hold=null;function pointer(e,down){const r=canvas.getBoundingClientRect();api.dte_touch(Math.round((e.clientX-r.left)*canvas.width/r.width),Math.round((e.clientY-r.top)*canvas.height/r.height),down,Math.round(time));renderFrame(false);}
-  canvas.onpointerdown=e=>{demo=false;canvas.setPointerCapture(e.pointerId);contact={time};pointer(e,1);hold=setTimeout(()=>{if(contact){time=Math.max(time,contact.time+600);renderFrame(false);}},600);};canvas.onpointermove=e=>{if(contact)pointer(e,1);};canvas.onpointerup=e=>{clearTimeout(hold);if(!contact)return;pointer(e,0);contact=null;statusMode='gesture';localizeDynamic();};canvas.onpointercancel=()=>{clearTimeout(hold);contact=null;api.dte_touch_cancel();};
-  document.addEventListener('dte-locale-change',localizeDynamic);window.dtePreview={get api(){return api;},get renderProfile(){return activeProfile;},switchProfile:switchRenderProfile,drawAt(t){time=t;demo=false;running=false;renderFrame(false);localizeDynamic();},gesture(g,t){api.dte_gesture(g,t);},reset(w=280,h=240){api.dte_init(w,h);state();},hash:()=>api.dte_hash()>>>0,time:()=>time,draw:()=>renderFrame(false),hardware:()=>({profile:hardwareProfile(),transfer:lastTransfer,estimate:lastEstimate,presentedFps,droppedPercent})};
+  canvas.onpointerdown=e=>{stopDemo();wakeAnimation();canvas.setPointerCapture(e.pointerId);contact={time};pointer(e,1);hold=setTimeout(()=>{if(contact){time=Math.max(time,contact.time+600);renderFrame(false);syncInteraction();}},600);};canvas.onpointermove=e=>{if(contact)pointer(e,1);};canvas.onpointerup=e=>{clearTimeout(hold);if(!contact)return;pointer(e,0);syncInteraction();contact=null;statusMode='gesture';localizeDynamic();};canvas.onpointercancel=()=>{clearTimeout(hold);contact=null;api.dte_touch_cancel();};
+  document.addEventListener('dte-locale-change',localizeDynamic);window.dtePreview={get api(){return api;},get renderProfile(){return activeProfile;},switchProfile:switchRenderProfile,drawAt(t){interactionFrames=0;time=t;demo=false;running=false;renderFrame(false);localizeDynamic();},gesture(g,t){api.dte_gesture(g,t);},reset(w=280,h=240){interactionFrames=0;api.dte_init(w,h);state();},hash:()=>api.dte_hash()>>>0,time:()=>time,draw:()=>renderFrame(false),hardware:()=>({profile:hardwareProfile(),transfer:lastTransfer,estimate:lastEstimate,presentedFps,droppedPercent})};
   document.dispatchEvent(new CustomEvent('dte-preview-ready'));
   applyProfile('nrf52840');reset();requestAnimationFrame(tick);
 })().catch(e=>{document.getElementById('error').textContent=window.dteI18n.t('load_error')+e.message;document.getElementById('status').textContent=window.dteI18n.t('reload');});

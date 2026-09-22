@@ -70,6 +70,10 @@ Theme 测试亦可导入 `compare_reference.py` 的 `compare()`，传入自身
 
 动画比较须固定 snapshot 与 timestamp。先验证静态关键帧，再比较动作序列；
 逻辑 60Hz 只约束 deadline，实机 SPI 帧率仍须以固件日志及屏幕结果验证。
+硬件模拟档下的手动按钮与触摸动作采用串行关键相位：每次新动作先清除旧的
+设备忙截止线，再按实际渲染及传输预算完整呈现 25%、50%、75%、100% 四段。
+此模式会在设备不足以实时完成时拉长墙钟时间，而不把中间相位全数丢弃；无限制
+档仍按所选 FPS 推进。连续两次点击必须各自完成往返，不得沿用前次 deadline。
 
 旧 raster Theme 迁移 ABI 1.3 时，可先用 `DTE_THEME_RASTER_ADAPTER` 保持视觉
 代码不变；其每个 firmware strip 均会重放 legacy renderer，故只可作正确性
