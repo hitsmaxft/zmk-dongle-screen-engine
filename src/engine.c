@@ -223,6 +223,14 @@ void dte_frame_from_raster(struct dte_frame_result *result, int w, int h,
   if (result->dirty_count)
     result->flags |= DTE_RENDER_FRAME_CHANGED;
 }
+void dte_frame_from_raster_deadline(struct dte_frame_result *result, int w,
+                                    int h, uint32_t next_frame_at_ms) {
+  dte_frame_from_raster(result, w, h, 0);
+  if (next_frame_at_ms) {
+    result->flags |= DTE_RENDER_DEADLINE_VALID;
+    result->next_frame_at_ms = next_frame_at_ms;
+  }
+}
 
 static int rect_valid(const struct dte_rect *r) {
   return r->width && r->height && r->x >= 0 && r->y >= 0 &&

@@ -119,6 +119,12 @@ no more numerous than `DTE_MAX_DIRTY_RECTS`. The flags are:
 The host consumes explicit deadlines. A display transfer failure forces a full
 scene repaint on the next attempt.
 
+Legacy allocation-free raster themes may use
+`DTE_THEME_RASTER_DEADLINE_ADAPTER`. Its schedule callback runs after frame
+planning and returns zero when idle, `DTE_RASTER_SCHEDULE_CONTINUOUS` for the
+FPS grid, or an absolute monotonic deadline. Deadline-only frames are not
+subject to max-throughput catch-up; a late authored keyframe runs promptly.
+
 For retained rendering, each changing frame must include both previous and
 current conservative bounds. A hidden or moved object therefore restores its
 old location. If the rectangle list cannot represent the damage, return one
