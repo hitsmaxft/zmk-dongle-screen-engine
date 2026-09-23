@@ -19,6 +19,7 @@ static uint16_t *fb;
 static uint32_t damage[18];
 static const uint32_t *canvas_damage;
 static int canvas_damage_rows;
+static int exclude_cx,exclude_cy,exclude_radius2;
 static int damage_enabled, hide_text;
 static int density_mask = 255;
 static int density_pattern, density_cx, density_cy, density_inner,
@@ -38,6 +39,7 @@ void dtr_begin(uint16_t *pixels, int w, int h) {
   STRIDE = w;
   canvas_damage = NULL;
   canvas_damage_rows = 0;
+  exclude_radius2 = 0;
   damage_enabled = hide_text = 0;
   dtr_clip = (struct dtr_clip_rect){0, 0, w, h};
 }
@@ -45,6 +47,11 @@ void dtr_set_canvas_damage(const uint32_t *rows, int row_count) {
   canvas_damage = rows;
   canvas_damage_rows = rows && row_count > 0 ? row_count : 0;
 }
+void dtr_exclude_disc(int cx,int cy,int radius) {
+  exclude_cx=cx;exclude_cy=cy;
+  exclude_radius2=radius>0?radius*radius:0;
+}
+void dtr_exclude_none(void) { exclude_radius2=0; }
 void dtr_begin_canvas(const struct dte_canvas *canvas) {
   fb = canvas->pixels;
   W = canvas->scene_width;
@@ -56,10 +63,12 @@ void dtr_begin_canvas(const struct dte_canvas *canvas) {
   STRIDE = canvas->stride_pixels;
   region_override = 1;
   hide_text = 0;
+  exclude_radius2 = 0;
   dtr_clip = (struct dtr_clip_rect){OX, OY, OX + TW, OY + TH};
 }
 void dtr_end_canvas(void) {
   region_override = 0;
+  exclude_radius2 = 0;
   canvas_damage = NULL;
   canvas_damage_rows = 0;
   fb = NULL;
@@ -112,6 +121,11 @@ static int dirty_pixel(int x, int y) {
            (canvas_damage[y >> 4] & (1u << (x >> 4)));
   return region_override || !damage_enabled ||
          (damage[y >> 4] & (1u << (x >> 4)));
+}
+static int excluded_pixel(int x,int y) {
+  if(!exclude_radius2)return 0;
+  int dx=x-exclude_cx,dy=y-exclude_cy;
+  return dx*dx+dy*dy<=exclude_radius2;
 }
 static int dirty_rect(int x, int y, int w, int h) {
   if (x < 0) {
@@ -440,6 +454,7 @@ void dtr_line(int x, int y, int xx, int yy, int weight, int r, int g, int b,
         i = ((i / 16) + 1) * 16 - 1;
         continue;
       }
+      if(excluded_pixel(i,j))continue;
       float t = dtr_limit(((i - x) * vx + (j - y) * vy) * inv_len);
       float dx = i - x - t * vx, dy = j - y - t * vy;
       if (dx * dx + dy * dy > maxdist * maxdist)
@@ -585,6 +600,7 @@ void dtr_arc_bands(int cx,int cy,int inner,int first,int last,
     int start=left>cx-edge?left:cx-edge,end=right<cx+edge?right:cx+edge;
     for(int x=start;x<=end;x++){
       if(!dirty_pixel(x,y)){x=((x/16)+1)*16-1;continue;}
+      if(excluded_pixel(x,y))continue;
       if(hole>0&&x>cx-hole&&x<cx+hole){x=cx+hole-1;continue;}
       int dx=x-cx;
       int64_t cross1=(int64_t)sx*dy-(int64_t)sy*dx;
@@ -745,6 +761,7 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
         x = ((x / 16) + 1) * 16 - 1;
         continue;
       }
+      if(excluded_pixel(x,y))continue;
       if (hole > 0 && x > cx - hole && x < cx + hole) {
         x = cx + hole - 1;
         continue;

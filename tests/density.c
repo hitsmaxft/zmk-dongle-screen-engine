@@ -30,6 +30,15 @@ int main(void) {
     tiles+=(damage[row]>>col)&1u;
   assert(tiles>0&&tiles<30);
 
+  memset(pixels,0,sizeof(pixels));dtr_begin(pixels,280,240);
+  dtr_exclude_disc(140,120,20);
+  dtr_line(100,120,180,120,3,255,255,255,255);
+  dtr_exclude_none();
+  assert(pixels[120*280+110]!=0&&pixels[120*280+140]==0&&
+         pixels[120*280+170]!=0);
+  dtr_line(135,120,145,120,1,255,255,255,255);
+  assert(pixels[120*280+140]!=0); /* exclusion is scoped */
+
   for(int i=0;i<280*240;i++)pixels[i]=0x1234;
   uint32_t canvas_damage[15]={0};canvas_damage[5]=1u<<6;
   struct dte_canvas canvas=DTE_CANVAS_INIT;
