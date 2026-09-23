@@ -25,8 +25,9 @@ config ZMK_DONGLE_SCREEN_MAX_THROUGHPUT
     help
       When a completed animation frame already exceeds the configured frame
       period, yield the display queue for 1 ms and render the next frame
-      instead of waiting for another FPS grid boundary. This does not alter
-      Theme pixels or animation time and is intended for measured slow themes.
+      instead of waiting for another FPS grid boundary. Explicit Theme
+      deadlines remain authoritative. This does not alter Theme pixels or
+      animation time and is intended for measured slow themes.
 
 config ZMK_DONGLE_SCREEN_DONGLE_BATTERY
     bool "The dongle has a physical battery (otherwise show only split 0/1)"

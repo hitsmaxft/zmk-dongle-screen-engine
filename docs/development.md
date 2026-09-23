@@ -65,6 +65,11 @@ High-cost themes should separate frame planning from drawing. Declare old and
 new bounds only for visible components that change. Validate reverse motion,
 all animation variants and clipped rendering against full redraws.
 
+Use `DTE_THEME_RASTER_DEADLINE_ADAPTER` when a raster theme has discrete visual
+commits. Return one deadline for the next actual state change rather than
+marking unchanged holds continuous. Keep continuous scheduling for motion that
+still changes on every FPS-grid sample.
+
 The low-RAM host sends continuous animation as ordered strips over a merged
 bound by default; discrete updates use tile-hash packing. Optional
 `CONFIG_ZMK_DONGLE_SCREEN_REGION_TILE_HASH` also packs continuous animation,

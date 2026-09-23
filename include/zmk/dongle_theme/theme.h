@@ -197,3 +197,6 @@ void dte_frame_dirty_all(struct dte_frame_result *result, int width,
                          int height);
 void dte_frame_from_raster(struct dte_frame_result *result, int width,
                            int height, int active);
+void dte_frame_from_raster_deadline(struct dte_frame_result *result,
+                                    int width, int height,
+                                    uint32_t next_frame_at_ms);

@@ -44,6 +44,10 @@ int main(void) {
   assert(DTE_ABI_VERSION_V1_2 == 0x0102u);
   assert(DTE_ABI_VERSION_V1_3 == 0x0103u);
   assert(dte_validate_theme(&dte_selected_theme) == DTE_STATUS_OK);
+  struct dte_frame_result raster_deadline = DTE_FRAME_RESULT_INIT;
+  dte_frame_from_raster_deadline(&raster_deadline, 280, 240, 1234);
+  assert((raster_deadline.flags & DTE_RENDER_DEADLINE_VALID) &&
+         raster_deadline.next_frame_at_ms == 1234);
   assert(dte_init_ex(1, 1) == DTE_STATUS_UNSUPPORTED_DISPLAY);
   assert(dte_init_ex(280, 240) == DTE_STATUS_OK && mounts == 1);
   struct dte_snapshot snapshot = DTE_SNAPSHOT_INIT;

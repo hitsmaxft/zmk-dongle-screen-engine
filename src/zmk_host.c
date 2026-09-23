@@ -411,18 +411,22 @@ static void frame_work_cb(struct k_work *work) {
     uint32_t schedule_now=k_uptime_get_32();
     uint32_t period=MAX(1,1000/CONFIG_ZMK_DONGLE_SCREEN_FPS);
     if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_MAX_THROUGHPUT)&&
+       (frame.flags&DTE_RENDER_CONTINUOUS)&&
        schedule_now-now>=period){
       k_work_reschedule_for_queue(zmk_display_work_q(),&frame_work,K_MSEC(1));
       return;
     }
     deadline=(frame.flags&DTE_RENDER_DEADLINE_VALID)?frame.next_frame_at_ms:0;
-    /* A slow frame must not trigger an immediate catch-up loop. Skip every
-     * expired deadline and leave the display queue idle until the next grid;
-     * state events can then reschedule the work immediately. */
+    /* Continuous work skips missed grid slots. An explicit Theme deadline is
+     * an authored keyframe and therefore runs promptly even when already late. */
     uint32_t grid_deadline=
       ((uint64_t)schedule_now*CONFIG_ZMK_DONGLE_SCREEN_FPS/1000+1)*
       1000/CONFIG_ZMK_DONGLE_SCREEN_FPS;
-    if(!deadline||(int32_t)(deadline-schedule_now)<=0)deadline=grid_deadline;
+    if(frame.flags&DTE_RENDER_DEADLINE_VALID){
+      if((int32_t)(deadline-schedule_now)<=0)deadline=schedule_now+1;
+    }else{
+      deadline=grid_deadline;
+    }
     k_work_reschedule_for_queue(
         zmk_display_work_q(), &frame_work,
         K_MSEC(MAX(1, (int32_t)(deadline - k_uptime_get_32()))));
