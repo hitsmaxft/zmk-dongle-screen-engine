@@ -239,6 +239,14 @@ bands; other builds use the individual-arc path. The call allocates no buffer.
 `dtr_clear_disc_background()` restores a two-color disc background as clipped
 scanline spans. It respects retained tile damage and canvas origin/stride.
 
+`dtr_exclude_disc(cx, cy, radius)` starts a scoped circular exclusion and
+`dtr_exclude_none()` ends it. Arc, adjacent-band and line rasterizers reject
+excluded candidates before distance, coverage and blending work. Use it for
+complete geometry that moves behind an opaque circular instrument; do not
+encode occlusion by shrinking the object or repainting the covering disc.
+Exclusion is independent from tile damage: an excluded pixel must not trigger
+the tile-skip shortcut used by `dirty_pixel()`.
+
 Primitive implementations may call an internal unchecked blend after they
 have validated clip, canvas and damage bounds. Public pixel APIs always retain
 their checks. This avoids repeating per-pixel predicates inside bounded spans
@@ -264,3 +272,8 @@ probe before producing the final HTML. The probe covers:
 long-press lifecycle checks, deterministic repeat, and full RGB565 hash parity.
 This validates software behavior; physical SPI timing and panel output remain
 separate hardware gates.
+
+The preview shell may adapt pointer deltas to a mounted device orientation, but
+must preserve the original contact origin used by split-screen interactions.
+Such adaptation belongs to preview JavaScript and must not change firmware
+gesture codes or Theme semantics.

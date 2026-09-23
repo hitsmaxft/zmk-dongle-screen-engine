@@ -13,6 +13,10 @@ void dtr_begin(uint16_t *pixels, int w, int h);
 /* Restrict the next canvas draw to scene-space 16x16 tiles. The caller owns
  * rows until dtr_end_canvas(); NULL restores ordinary rectangular clipping. */
 void dtr_set_canvas_damage(const uint32_t *rows, int row_count);
+/* Temporarily reject pixels inside a scene-space disc. Intended for drawing
+ * moving foreground geometry behind an opaque circular instrument. */
+void dtr_exclude_disc(int cx, int cy, int radius);
+void dtr_exclude_none(void);
 void dtr_begin_canvas(const struct dte_canvas *canvas);
 void dtr_end_canvas(void);
 int dtr_is_dry_run(void);
