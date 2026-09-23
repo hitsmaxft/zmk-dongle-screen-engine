@@ -85,6 +85,13 @@ work. Speed builds store symmetric Q8 distances in a 141-axis triangular table
 Background fills process contiguous damaged spans; per-pixel color and damage
 decisions are unnecessary for a solid run. Both optimizations preserve RGB565
 output and need no additional framebuffer.
+
+For foreground geometry moving behind a circular dial, preserve its complete
+shape and use scoped circular exclusion. Reject overlap before radial distance,
+coverage and blending; once a conservative bound is fully inside the opaque
+dial, skip the primitive entirely. Do not place exclusion inside
+`dirty_pixel()`: its false result permits a whole-tile jump, whereas circular
+occlusion varies within a tile.
 Two optional firmware settings affect performance:
 
 - `CONFIG_ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED` selects Engine `-O3` and Q8/Q15
@@ -157,6 +164,13 @@ unavailable. WASM size is not firmware Flash usage.
 Compare the same board, shield, Kconfig and toolchain. SPI figures estimate
 payload, transfer time and budget utilization. Measure command overhead, DMA
 gaps, task contention and panel timing on hardware.
+
+For cross-repository API changes, preview success is not firmware evidence.
+The release gate is: commit and push Engine, pin that exact commit in the West
+manifest, run `west update`, verify the dependency checkout HEAD, perform a
+pristine consumer build, then inspect final Kconfig, map and artifact hash.
+Report native/WASM, dependency pin and firmware verification as separate
+states.
 
 With logging enabled, the firmware diagnostic window reports planning, region
 drawing, end-to-end frame latency, dirty rectangles, tile hashing, packet
