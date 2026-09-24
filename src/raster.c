@@ -203,7 +203,8 @@ void dtr_damage_arc(int cx,int cy,int inner,int outer,int first,int last){
   while(last<=first)last+=360;
   if(last-first>=360){dtr_damage_ring(cx,cy,inner,outer);return;}
   for(int begin=first;begin<last;){
-    int end=begin+15;if(end>last)end=last;
+    int end=begin+15;
+    if(end>last)end=last;
     int left=cx+outer+2,right=cx-outer-2,top=cy+outer+2,bottom=cy-outer-2;
     for(int sample=0;sample<3;sample++){
       int angle=sample==0?begin:sample==1?(begin+end)/2:end;
@@ -211,8 +212,10 @@ void dtr_damage_arc(int cx,int cy,int inner,int outer,int first,int last){
         int radius=edge?outer:inner;
         int x=cx+radius*dtr_trig(angle+90)/32767;
         int y=cy+radius*dtr_trig(angle)/32767;
-        if(x<left)left=x;if(x>right)right=x;
-        if(y<top)top=y;if(y>bottom)bottom=y;
+        if(x<left)left=x;
+        if(x>right)right=x;
+        if(y<top)top=y;
+        if(y>bottom)bottom=y;
       }
     }
     dtr_damage_rect(left-3,top-3,right-left+7,bottom-top+7);
@@ -268,8 +271,10 @@ void dtr_clear_disc_background(int cx,int cy,int radius,
     if(edge2<0){fill_span(left,right,y,outer);continue;}
     int edge=(int)dtr_root(edge2);
     int a=cx-edge,b=cx+edge+1;
-    if(a<left)a=left;if(a>right)a=right;
-    if(b<left)b=left;if(b>right)b=right;
+    if(a<left)a=left;
+    if(a>right)a=right;
+    if(b<left)b=left;
+    if(b>right)b=right;
     fill_span(left,a,y,outer);fill_span(a,b,y,inner);fill_span(b,right,y,outer);
   }
   PROFILE_END(3);
@@ -392,8 +397,10 @@ void dtr_rect(int x, int y, int w, int h, int r, int g, int b, int a) {
   int top=y>dtr_clip.top?y:dtr_clip.top;
   int right=x+w<dtr_clip.right?x+w:dtr_clip.right;
   int bottom=y+h<dtr_clip.bottom?y+h:dtr_clip.bottom;
-  if(left<OX)left=OX;if(top<OY)top=OY;
-  if(right>OX+TW)right=OX+TW;if(bottom>OY+TH)bottom=OY+TH;
+  if(left<OX)left=OX;
+  if(top<OY)top=OY;
+  if(right>OX+TW)right=OX+TW;
+  if(bottom>OY+TH)bottom=OY+TH;
   for (int j = top; j < bottom; j++)
     for (int i = left; i < right; i++) {
       if(!dirty_pixel(i,j)){i=((i>>4)+1)*16-1;continue;}
@@ -407,16 +414,20 @@ void dtr_disc(int cx,int cy,int radius,int r,int g,int b){
   uint16_t color=dtr_rgb(r,g,b);
   int top=cy-radius+1>dtr_clip.top?cy-radius+1:dtr_clip.top;
   int bottom=cy+radius<dtr_clip.bottom?cy+radius:dtr_clip.bottom;
-  if(top<OY)top=OY;if(bottom>OY+TH)bottom=OY+TH;
-  if(top<0)top=0;if(bottom>H)bottom=H;
+  if(top<OY)top=OY;
+  if(bottom>OY+TH)bottom=OY+TH;
+  if(top<0)top=0;
+  if(bottom>H)bottom=H;
   for(int y=top;y<bottom;y++){
     int dy=y-cy;
     int edge=(int)dtr_root(radius*radius-dy*dy-1);
     int left=cx-edge,right=cx+edge;
     if(left<dtr_clip.left)left=dtr_clip.left;
     if(right>=dtr_clip.right)right=dtr_clip.right-1;
-    if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
-    if(left<0)left=0;if(right>=W)right=W-1;
+    if(left<OX)left=OX;
+    if(right>=OX+TW)right=OX+TW-1;
+    if(left<0)left=0;
+    if(right>=W)right=W-1;
     fill_span(left,right+1,y,color);
   }
   PROFILE_END(4);
@@ -566,14 +577,17 @@ void dtr_arc_bands(int cx,int cy,int inner,int first,int last,
     float minx=outer,maxx=-outer,miny=outer,maxy=-outer;
     for(int i=0;i<6;i++){
       int angle=i==0?first:i==1?last:(i-2)*90;
-      int delta=(angle-first)%360;if(delta<0)delta+=360;
+      int delta=(angle-first)%360;
+      if(delta<0)delta+=360;
       if(i>=2&&delta>last-first)continue;
       for(int j=0;j<2;j++){
         int radius=j?outer:inner;
         float xx=radius*(dtr_trig(angle+90)/32767.f);
         float yy=radius*(dtr_trig(angle)/32767.f);
-        if(xx<minx)minx=xx;if(xx>maxx)maxx=xx;
-        if(yy<miny)miny=yy;if(yy>maxy)maxy=yy;
+        if(xx<minx)minx=xx;
+        if(xx>maxx)maxx=xx;
+        if(yy<miny)miny=yy;
+        if(yy>maxy)maxy=yy;
       }
     }
     left=cx+(int)minx-2;right=cx+(int)maxx+2;
@@ -583,10 +597,14 @@ void dtr_arc_bands(int cx,int cy,int inner,int first,int last,
   if(right>=dtr_clip.right)right=dtr_clip.right-1;
   if(top<dtr_clip.top)top=dtr_clip.top;
   if(bottom>=dtr_clip.bottom)bottom=dtr_clip.bottom-1;
-  if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
-  if(top<OY)top=OY;if(bottom>=OY+TH)bottom=OY+TH-1;
-  if(left<0)left=0;if(right>=W)right=W-1;
-  if(top<0)top=0;if(bottom>=H)bottom=H-1;
+  if(left<OX)left=OX;
+  if(right>=OX+TW)right=OX+TW-1;
+  if(top<OY)top=OY;
+  if(bottom>=OY+TH)bottom=OY+TH-1;
+  if(left<0)left=0;
+  if(right>=W)right=W-1;
+  if(top<0)top=0;
+  if(bottom>=H)bottom=H-1;
   if(!dirty_rect(left,top,right-left+1,bottom-top+1)){PROFILE_END(1);return;}
   int sx=dtr_trig(first+90),sy=dtr_trig(first);
   int ex=dtr_trig(last+90),ey=dtr_trig(last);
@@ -618,13 +636,15 @@ void dtr_arc_bands(int cx,int cy,int inner,int first,int last,
       }
       int relative=distance_q8_xy(dx,dy)-inner*256;
       int lo=(relative-384)/256,hi=(relative+128)/256;
-      if(lo<0)lo=0;if(hi>=count)hi=count-1;
+      if(lo<0)lo=0;
+      if(hi>=count)hi=count-1;
       for(int i=lo;i<=hi;i++){
         /* Match dtr_arc_f's radius-zero squared-distance predicate. */
         if(inner+i==0&&dx==0&&dy==0)continue;
         int radial_in=relative-i*256+128,radial_out=(i+1)*256+128-relative;
         if(radial_in<=0||radial_out<=0)continue;
-        if(radial_in>256)radial_in=256;if(radial_out>256)radial_out=256;
+        if(radial_in>256)radial_in=256;
+        if(radial_out>256)radial_out=256;
         int coverage=(radial_in*radial_out*32767)>>16;
         if(last-first<=180){coverage=(coverage*c1+16384)>>15;coverage=(coverage*c2+16384)>>15;}
         else coverage=(coverage*(32767-outside)+16384)>>15;
@@ -782,7 +802,8 @@ void dtr_arc_f(int cx, int cy, float inner, float outer, int first, int last,
       int radial_in=distance-inner_q8+128;
       int radial_out=outer_q8+128-distance;
       if(radial_in<=0||radial_out<=0)continue;
-      if(radial_in>256)radial_in=256;if(radial_out>256)radial_out=256;
+      if(radial_in>256)radial_in=256;
+      if(radial_out>256)radial_out=256;
       int coverage=(radial_in*radial_out*32767)>>16;
       int c1=(int)(cross1+16384),c2=(int)(cross2+16384);
       if(c1<0)c1=0;else if(c1>32767)c1=32767;
@@ -891,8 +912,10 @@ void dtr_metal_ring(int cx, int cy, int R, int thickness,
   int bottom=cy+R+2<dtr_clip.bottom?cy+R+2:dtr_clip.bottom;
   int left=cx-R-1>dtr_clip.left?cx-R-1:dtr_clip.left;
   int right=cx+R+2<dtr_clip.right?cx+R+2:dtr_clip.right;
-  if(top<OY)top=OY;if(bottom>OY+TH)bottom=OY+TH;
-  if(left<OX)left=OX;if(right>OX+TW)right=OX+TW;
+  if(top<OY)top=OY;
+  if(bottom>OY+TH)bottom=OY+TH;
+  if(left<OX)left=OX;
+  if(right>OX+TW)right=OX+TW;
   for (int y = top; y < bottom; y++)
     for (int x = left; x < right; x++) {
       int dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
@@ -913,15 +936,19 @@ void dtr_metal_ring(int cx, int cy, int R, int thickness,
 static void fill_flat_disc(int cx,int cy,int radius,uint16_t color){
   int top=cy-radius+1>dtr_clip.top?cy-radius+1:dtr_clip.top;
   int bottom=cy+radius<dtr_clip.bottom?cy+radius:dtr_clip.bottom;
-  if(top<OY)top=OY;if(bottom>OY+TH)bottom=OY+TH;
-  if(top<0)top=0;if(bottom>H)bottom=H;
+  if(top<OY)top=OY;
+  if(bottom>OY+TH)bottom=OY+TH;
+  if(top<0)top=0;
+  if(bottom>H)bottom=H;
   for(int y=top;y<bottom;y++){
     int dy=y-cy,edge=(int)dtr_root(radius*radius-dy*dy-1);
     int left=cx-edge,right=cx+edge;
     if(left<dtr_clip.left)left=dtr_clip.left;
     if(right>=dtr_clip.right)right=dtr_clip.right-1;
-    if(left<OX)left=OX;if(right>=OX+TW)right=OX+TW-1;
-    if(left<0)left=0;if(right>=W)right=W-1;
+    if(left<OX)left=OX;
+    if(right>=OX+TW)right=OX+TW-1;
+    if(left<0)left=0;
+    if(right>=W)right=W-1;
     fill_span(left,right+1,y,color);
   }
 }
@@ -938,7 +965,11 @@ static void metal_ring_cached(int cx, int cy, int R, int thickness,
   if(first_dy<OY-cy)first_dy=OY-cy;
   if(last_dy>OY+TH-1-cy)last_dy=OY+TH-1-cy;
   size_t lo=0,hi=count;
-  while(lo<hi){size_t mid=lo+(hi-lo)/2;if(atlas[mid].y<first_dy)lo=mid+1;else hi=mid;}
+  while(lo<hi){
+    size_t mid=lo+(hi-lo)/2;
+    if(atlas[mid].y<first_dy)lo=mid+1;
+    else hi=mid;
+  }
   for (size_t i = lo; i < count && atlas[i].y<=last_dy; i++) {
     const struct dtr_metal_texel *t = &atlas[i];
     int x = cx + t->x, y = cy + t->y;
@@ -977,8 +1008,10 @@ void dtr_metal_ring_cached_sector(int cx,int cy,int R,int thickness,
   (void)R;(void)thickness;
   if(!fb)return;
   PROFILE_BEGIN;
-  int first_y=dtr_clip.top;if(first_y<OY)first_y=OY;
-  int last_y=dtr_clip.bottom-1;if(last_y>OY+TH-1)last_y=OY+TH-1;
+  int first_y=dtr_clip.top;
+  if(first_y<OY)first_y=OY;
+  int last_y=dtr_clip.bottom-1;
+  if(last_y>OY+TH-1)last_y=OY+TH-1;
   size_t lo=0,hi=count;
   while(lo<hi){size_t mid=lo+(hi-lo)/2;
     if(cy+atlas[mid].y<first_y)lo=mid+1;else hi=mid;}
@@ -1027,8 +1060,10 @@ static void metal_ring_scaled(int cx, int cy, int source_radius,
 #endif
   if(clear_disc)
     fill_flat_disc(cx,cy,target_radius-thickness-1,dtr_rgb(8,10,12));
-  int first_y=dtr_clip.top;if(first_y<OY)first_y=OY;
-  int last_y=dtr_clip.bottom-1;if(last_y>OY+TH-1)last_y=OY+TH-1;
+  int first_y=dtr_clip.top;
+  if(first_y<OY)first_y=OY;
+  int last_y=dtr_clip.bottom-1;
+  if(last_y>OY+TH-1)last_y=OY+TH-1;
   size_t lo=0,hi=count;
   while(lo<hi){size_t mid=lo+(hi-lo)/2;
     int sy=
