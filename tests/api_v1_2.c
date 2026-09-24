@@ -41,6 +41,9 @@ const struct dte_theme dte_selected_theme =
                    gesture_theme, frame_theme, draw_theme);
 
 int main(void) {
+  assert(DTE_ENGINE_VERSION_MAJOR == 1u && DTE_ENGINE_VERSION_MINOR == 4u &&
+         DTE_ENGINE_VERSION_PATCH == 1u);
+  assert(strcmp(DTE_ENGINE_VERSION_STRING, "1.4.1") == 0);
   assert(DTE_ABI_VERSION_V1_2 == 0x0102u);
   assert(DTE_ABI_VERSION_V1_3 == 0x0103u);
   assert(dte_validate_theme(&dte_selected_theme) == DTE_STATUS_OK);
