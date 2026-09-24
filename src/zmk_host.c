@@ -165,7 +165,8 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
     int left=dte_width(),top=dte_height(),right=0,bottom=0;
     for(unsigned i=0;i<frame->dirty_count;i++){
       const struct dte_rect *rect=&frame->dirty[i];
-      if(rect->x<left)left=rect->x;if(rect->y<top)top=rect->y;
+      if(rect->x<left)left=rect->x;
+      if(rect->y<top)top=rect->y;
       if(rect->x+rect->width>right)right=rect->x+rect->width;
       if(rect->y+rect->height>bottom)bottom=rect->y+rect->height;
     }
@@ -193,7 +194,8 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
     tile_hash[index]=hash;
   }
   uint32_t hash_elapsed=k_cyc_to_us_floor32(k_cycle_get_32()-hash_started);
-  hash_us+=hash_elapsed;hash_count++;if(hash_elapsed>hash_max_us)hash_max_us=hash_elapsed;
+  hash_us+=hash_elapsed;hash_count++;
+  if(hash_elapsed>hash_max_us)hash_max_us=hash_elapsed;
   candidate_tiles+=candidate_count;changed_tiles+=changed_count;
   bool sent=false;
   uint32_t pack_elapsed=0;
@@ -222,7 +224,8 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
     if(rc){transfer_failed=true;LOG_ERR("display full tiles failed: %d",rc);break;}
     sent=true;
   }
-  pack_us+=pack_elapsed;pack_count++;if(pack_elapsed>pack_max_us)pack_max_us=pack_elapsed;
+  pack_us+=pack_elapsed;pack_count++;
+  if(pack_elapsed>pack_max_us)pack_max_us=pack_elapsed;
   full_hash_valid=!transfer_failed;
   return sent&&!transfer_failed;
 }
@@ -243,7 +246,8 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
     int left=dte_width(),top=dte_height(),right=0,bottom=0;
     for(unsigned i=0;i<frame->dirty_count;i++){
       const struct dte_rect *r=&frame->dirty[i];
-      if(r->x<left)left=r->x;if(r->y<top)top=r->y;
+      if(r->x<left)left=r->x;
+      if(r->y<top)top=r->y;
       if(r->x+r->width>right)right=r->x+r->width;
       if(r->y+r->height>bottom)bottom=r->y+r->height;
     }
