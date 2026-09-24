@@ -2,7 +2,7 @@
 
 ## Scope and version
 
-Engine 1.3.0 exposes Theme ABI `0x0103` and TRE ABI `0x0100`. It links one
+Engine 1.4.1 exposes Theme ABI `0x0103` and TRE ABI `0x0100`. It links one
 compile-time Theme and supports 280×240, 240×280 and 240×240 RGB565 scenes.
 The Theme region contract remains the bounded ABI 1.2 design; ABI 1.3 adds the
 Theme-independent TRE render core shared by firmware, native and WASM builds.
