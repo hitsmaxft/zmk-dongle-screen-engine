@@ -172,6 +172,21 @@ pristine consumer build, then inspect final Kconfig, map and artifact hash.
 Report native/WASM, dependency pin and firmware verification as separate
 states.
 
+## Compiler warning gate
+
+Keep Engine-owned Zephyr output free of compiler warnings. Write one control
+statement per physical line; adjacent unbraced `if` statements must never
+share a line because their visual grouping triggers
+`-Wmisleading-indentation` and obscures review. Formatting-only cleanup must
+preserve condition order and pass the complete native test suite.
+
+After warning cleanup, validate a pristine downstream firmware build inside
+the consumer project's toolchain environment (for example `direnv exec .`). A
+cached build can retain SDK discovery and stale objects, while native/WASM
+tests do not compile `zmk_host.c` through Zephyr. Separate Engine-owned
+warnings from third-party or deprecated-Zephyr warnings in the report; do not
+claim a globally warning-free build when an unrelated warning remains.
+
 With logging enabled, the firmware diagnostic window reports planning, region
 drawing, end-to-end frame latency, dirty rectangles, tile hashing, packet
 packing, display busy time, writes and bytes per presented frame. Raster
