@@ -4,7 +4,7 @@
 
 - Use `README.md` for repository scope and human-facing orientation. Use this file for repository constraints, and use task-specific `skills/*/SKILL.md` files for the corresponding implementation guidance.
 - Skill links are repository-relative. When a task matches a listed trigger, read the linked `SKILL.md` completely before changing source, generated assets or documentation in that area.
-- For typography, font generation, text layout or glyph icons, read [the UI design skill](skills/ui-design/SKILL.md). Its font-selection and validation guidance is authoritative; the README contains only a short public summary.
+- For typography, font generation, text layout, glyph icons, render-contract selection or framebuffer tuning, read [the UI design skill](skills/ui-design/SKILL.md). Its selection and validation guidance is authoritative; the README contains only a short public summary.
 - For API work, read `docs/api.md`; for build and preview work, read `docs/development.md`. Keep their claims synchronized with implemented behavior.
 
 ## WASM preview localization

@@ -77,4 +77,5 @@ static int render(const struct dte_snapshot *s, uint32_t now,
   return 0;
 }
 
-DTE_THEME_RASTER_ADAPTER("minimal", mount, gesture, render);
+DTE_THEME_RASTER_ADAPTER("minimal", DTE_THEME_RENDER_REGION_CAPABLE, mount,
+                         gesture, render);

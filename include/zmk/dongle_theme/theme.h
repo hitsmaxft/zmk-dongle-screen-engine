@@ -4,13 +4,24 @@
 #include <stdint.h>
 
 #define DTE_ENGINE_VERSION_MAJOR 1u
-#define DTE_ENGINE_VERSION_MINOR 4u
-#define DTE_ENGINE_VERSION_PATCH 1u
-#define DTE_ENGINE_VERSION_STRING "1.4.1"
-#define DTE_ABI_VERSION 0x0103u
+#define DTE_ENGINE_VERSION_MINOR 5u
+#define DTE_ENGINE_VERSION_PATCH 0u
+#define DTE_ENGINE_VERSION_STRING "1.5.0"
+#define DTE_ABI_VERSION 0x0104u
 #define DTE_ABI_VERSION_V1_2 0x0102u
-#define DTE_ABI_VERSION_V1_3 DTE_ABI_VERSION
+#define DTE_ABI_VERSION_V1_3 0x0103u
+#define DTE_ABI_VERSION_V1_4 DTE_ABI_VERSION
+#if !defined(__ZEPHYR__) || defined(CONFIG_ZMK_DONGLE_SCREEN_HD_480)
+#define DTE_MAX_WIDTH 480
+#define DTE_MAX_HEIGHT 480
+#define DTE_MAX_PIXELS (480 * 480)
+#else
+#define DTE_MAX_WIDTH 280
+#define DTE_MAX_HEIGHT 280
 #define DTE_MAX_PIXELS (280 * 240)
+#endif
+#define DTE_TILE_COLS_MAX ((DTE_MAX_WIDTH + 15) / 16)
+#define DTE_TILE_ROWS_MAX ((DTE_MAX_HEIGHT + 15) / 16)
 #define DTE_MAX_DIRTY_RECTS 18u
 #define DTE_PIXEL_FORMAT_RGB565_LE 1u
 
@@ -60,8 +71,8 @@ typedef int32_t dte_result_t;
 #define DTE_SNAPSHOT_VALID_LAYER_NAME (UINT64_C(1) << 14)
 #define DTE_SNAPSHOT_VALID_ALL ((UINT64_C(1) << 15) - 1)
 
-/* ABI 1.2 replaced the full-frame v1/v1.1 Theme contract. ABI 1.3 retains
- * that region contract while adding the independent TRE render core. */
+/* ABI 1.2 replaced the full-frame v1/v1.1 Theme contract. ABI 1.3 added TRE;
+ * ABI 1.4 separates the Theme draw contract from the storage backend. */
 struct dte_snapshot {
   uint16_t abi_version, struct_size;
   uint32_t reserved0;
@@ -77,7 +88,7 @@ struct dte_snapshot {
 #define DTE_SNAPSHOT_REQUIRED_SIZE                                             \
   ((uint16_t)offsetof(struct dte_snapshot, reserved))
 #define DTE_SNAPSHOT_INIT                                                      \
-  {.abi_version = DTE_ABI_VERSION_V1_3,                                        \
+  {.abi_version = DTE_ABI_VERSION_V1_4,                                        \
    .struct_size = (uint16_t)sizeof(struct dte_snapshot),                       \
    .valid_mask = DTE_SNAPSHOT_VALID_ALL}
 
@@ -100,7 +111,7 @@ struct dte_frame_result {
 #define DTE_FRAME_RESULT_REQUIRED_SIZE                                         \
   ((uint16_t)offsetof(struct dte_frame_result, reserved))
 #define DTE_FRAME_RESULT_INIT                                                  \
-  {.abi_version = DTE_ABI_VERSION_V1_3,                                        \
+  {.abi_version = DTE_ABI_VERSION_V1_4,                                        \
    .struct_size = (uint16_t)sizeof(struct dte_frame_result)}
 
 struct dte_canvas {
@@ -115,11 +126,16 @@ struct dte_canvas {
 #define DTE_CANVAS_REQUIRED_SIZE                                               \
   ((uint16_t)offsetof(struct dte_canvas, reserved))
 #define DTE_CANVAS_INIT                                                        \
-  {.abi_version = DTE_ABI_VERSION_V1_3,                                        \
+  {.abi_version = DTE_ABI_VERSION_V1_4,                                        \
    .struct_size = (uint16_t)sizeof(struct dte_canvas),                         \
    .pixel_format = DTE_PIXEL_FORMAT_RGB565_LE}
 
 #define DTE_THEME_CAP_GESTURE (UINT32_C(1) << 0)
+#define DTE_THEME_RENDER_FULL_SCENE_ONLY 1u
+#define DTE_THEME_RENDER_REGION_CAPABLE 2u
+#define DTE_BACKEND_FULL_FRAMEBUFFER 1u
+#define DTE_BACKEND_COHERENT_STRIP 2u
+#define DTE_BACKEND_DIRTY_REGION 3u
 struct dte_theme {
   uint16_t abi_version, struct_size;
   uint32_t capabilities;
@@ -130,19 +146,22 @@ struct dte_theme {
                         struct dte_frame_result *);
   dte_result_t (*draw)(const struct dte_snapshot *, uint32_t,
                        const struct dte_canvas *);
-  uint32_t reserved[8];
+  uint8_t render_type;
+  uint8_t reserved0[3];
+  uint32_t reserved[7];
 };
 #define DTE_THEME_REQUIRED_SIZE ((uint16_t)offsetof(struct dte_theme, reserved))
-#define DTE_THEME_INIT(theme_id, theme_capabilities, mount_fn, gesture_fn,     \
-                       frame_fn, draw_fn)                                      \
-  {.abi_version = DTE_ABI_VERSION_V1_3,                                        \
+#define DTE_THEME_INIT(theme_id, theme_capabilities, theme_render_type,        \
+                       mount_fn, gesture_fn, frame_fn, draw_fn)                \
+  {.abi_version = DTE_ABI_VERSION_V1_4,                                        \
    .struct_size = (uint16_t)sizeof(struct dte_theme),                          \
    .capabilities = (theme_capabilities),                                       \
    .id = (theme_id),                                                           \
    .mount = (mount_fn),                                                        \
    .gesture = (gesture_fn),                                                    \
    .frame = (frame_fn),                                                        \
-   .draw = (draw_fn)}
+   .draw = (draw_fn),                                                          \
+   .render_type = (theme_render_type)}
 
 extern const struct dte_theme dte_selected_theme;
 dte_result_t dte_validate_theme(const struct dte_theme *theme);
@@ -152,12 +171,15 @@ dte_result_t dte_frame(uint32_t now, struct dte_frame_result *result);
 dte_result_t dte_draw(uint32_t now, const struct dte_canvas *canvas);
 dte_result_t dte_last_status(void);
 uint32_t dte_active_abi_version(void);
+uint32_t dte_theme_render_type(void);
 void dte_init(int width, int height);
 int dte_render(uint32_t now);
 #if !defined(__ZEPHYR__)
 uint16_t *dte_pixels(void);
 uint32_t dte_hash(void);
 int dte_preview_set_strip_pixels(int pixels);
+int dte_preview_set_backend(int backend);
+int dte_preview_backend(void);
 int dte_preview_set_filter(int filter);
 int dte_preview_filter(void);
 uint32_t dte_preview_filter_pixels(void);
@@ -166,6 +188,7 @@ int dte_preview_filter_corner_radius(void);
 uint32_t dte_preview_transfer_bytes(void);
 uint32_t dte_preview_dirty_rects(void);
 uint32_t dte_preview_draw_calls(void);
+uint32_t dte_preview_write_calls(void);
 #endif
 int dte_width(void);
 int dte_height(void);

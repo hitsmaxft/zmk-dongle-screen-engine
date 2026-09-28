@@ -35,8 +35,10 @@ static void dte_memcopy(void *dst, const void *src, size_t count) {
 #if !defined(__ZEPHYR__)
 static uint16_t preview_pixels[DTE_MAX_PIXELS];
 static int preview_strip_pixels=4480;
-static uint32_t preview_transfer_bytes,preview_dirty_rects,preview_draw_calls;
-static uint32_t preview_tile_hash[18*18];
+static int preview_backend=DTE_BACKEND_FULL_FRAMEBUFFER;
+static uint32_t preview_transfer_bytes,preview_dirty_rects,preview_draw_calls,
+                preview_write_calls;
+static uint32_t preview_tile_hash[DTE_TILE_ROWS_MAX*DTE_TILE_COLS_MAX];
 static int preview_force=1;
 static int preview_filter=DTE_FILTER_NONE,preview_filter_changed;
 static int preview_filter_corner_radius=24;
@@ -98,7 +100,7 @@ static void reset_state(void) {
 dte_result_t dte_validate_theme(const struct dte_theme *theme) {
   if (!theme)
     return DTE_STATUS_INVALID_ARGUMENT;
-  if (theme->abi_version != DTE_ABI_VERSION_V1_3)
+  if (theme->abi_version != DTE_ABI_VERSION_V1_4)
     return DTE_STATUS_UNSUPPORTED_ABI;
   if (theme->struct_size < DTE_THEME_REQUIRED_SIZE)
     return DTE_STATUS_STRUCT_TOO_SMALL;
@@ -107,12 +109,16 @@ dte_result_t dte_validate_theme(const struct dte_theme *theme) {
   if (!theme->mount || !theme->frame || !theme->draw ||
       ((theme->capabilities & DTE_THEME_CAP_GESTURE) && !theme->gesture))
     return DTE_STATUS_MISSING_CALLBACK;
+  if (theme->render_type != DTE_THEME_RENDER_FULL_SCENE_ONLY &&
+      theme->render_type != DTE_THEME_RENDER_REGION_CAPABLE)
+    return DTE_STATUS_INVALID_ARGUMENT;
   return DTE_STATUS_OK;
 }
 dte_result_t dte_init_ex(int32_t w, int32_t h) {
   active_abi_version = 0;
   frame_prepared = 0;
-  if (!((w == 280 && h == 240) || (w == 240 && (h == 280 || h == 240))))
+  if (!((w == 280 && h == 240) || (w == 240 && (h == 280 || h == 240)) ||
+        (DTE_MAX_WIDTH >= 480 && w == 480 && h == 480)))
     return last_status = DTE_STATUS_UNSUPPORTED_DISPLAY;
   width = w;
   height = h;
@@ -122,7 +128,7 @@ dte_result_t dte_init_ex(int32_t w, int32_t h) {
 #if !defined(__ZEPHYR__)
   for (int i = 0; i < DTE_MAX_PIXELS; i++)
     preview_pixels[i] = 0;
-  for(int i=0;i<18*18;i++)preview_tile_hash[i]=0;
+  for(int i=0;i<DTE_TILE_ROWS_MAX*DTE_TILE_COLS_MAX;i++)preview_tile_hash[i]=0;
   preview_force=1;
 #endif
   last_status = dte_validate_theme(&dte_selected_theme);
@@ -130,12 +136,13 @@ dte_result_t dte_init_ex(int32_t w, int32_t h) {
     return last_status;
   last_status = dte_selected_theme.mount(w, h, 0);
   if (last_status == DTE_STATUS_OK)
-    active_abi_version = DTE_ABI_VERSION_V1_3;
+    active_abi_version = DTE_ABI_VERSION_V1_4;
   return last_status;
 }
 void dte_init(int w, int h) { (void)dte_init_ex(w, h); }
 dte_result_t dte_last_status(void) { return last_status; }
 uint32_t dte_active_abi_version(void) { return active_abi_version; }
+uint32_t dte_theme_render_type(void) { return dte_selected_theme.render_type; }
 int dte_width(void) { return width; }
 int dte_height(void) { return height; }
 char *dte_name_buffer(void) { return name_buffer; }
@@ -143,14 +150,14 @@ char *dte_name_buffer(void) { return name_buffer; }
 dte_result_t dte_set_snapshot(const struct dte_snapshot *snapshot) {
   if (!snapshot)
     return last_status = DTE_STATUS_INVALID_ARGUMENT;
-  if (snapshot->abi_version != DTE_ABI_VERSION_V1_3)
+  if (snapshot->abi_version != DTE_ABI_VERSION_V1_4)
     return last_status = DTE_STATUS_UNSUPPORTED_ABI;
   if (snapshot->struct_size < DTE_SNAPSHOT_REQUIRED_SIZE)
     return last_status = DTE_STATUS_STRUCT_TOO_SMALL;
   uint64_t valid = snapshot->valid_mask & DTE_SNAPSHOT_VALID_ALL;
   dte_memzero(&state, sizeof(state));
   dte_memcopy(&state, snapshot, DTE_SNAPSHOT_REQUIRED_SIZE);
-  state.abi_version = DTE_ABI_VERSION_V1_3;
+  state.abi_version = DTE_ABI_VERSION_V1_4;
   state.struct_size = sizeof(state);
   state.valid_mask = valid;
   state.battery_count = clamp(state.battery_count, 2, 3);
@@ -210,7 +217,7 @@ void dte_frame_from_raster(struct dte_frame_result *result, int w, int h,
     dte_frame_dirty_all(result, w, h);
     return;
   }
-  uint32_t rows[18] = {0};
+  uint32_t rows[DTE_TILE_ROWS_MAX] = {0};
   for (int i = 0; i < (h + 15) / 16; i++)
     rows[i] = damage[i];
   struct dte_dirty_rect packed[DTE_MAX_DIRTY_RECTS];
@@ -239,7 +246,7 @@ static int rect_valid(const struct dte_rect *r) {
 dte_result_t dte_frame(uint32_t now, struct dte_frame_result *result) {
   if (!result)
     return last_status = DTE_STATUS_INVALID_ARGUMENT;
-  if (result->abi_version != DTE_ABI_VERSION_V1_3)
+  if (result->abi_version != DTE_ABI_VERSION_V1_4)
     return last_status = DTE_STATUS_UNSUPPORTED_ABI;
   if (result->struct_size < DTE_FRAME_RESULT_REQUIRED_SIZE)
     return last_status = DTE_STATUS_STRUCT_TOO_SMALL;
@@ -250,7 +257,7 @@ dte_result_t dte_frame(uint32_t now, struct dte_frame_result *result) {
   dte_result_t status = dte_selected_theme.frame(&state, now, &out);
   if (status != DTE_STATUS_OK)
     return last_status = status;
-  if (out.abi_version != DTE_ABI_VERSION_V1_3 ||
+  if (out.abi_version != DTE_ABI_VERSION_V1_4 ||
       out.struct_size < DTE_FRAME_RESULT_REQUIRED_SIZE)
     return last_status = DTE_STATUS_UNSUPPORTED_ABI;
   if (out.dirty_count > DTE_MAX_DIRTY_RECTS)
@@ -271,7 +278,7 @@ dte_result_t dte_frame(uint32_t now, struct dte_frame_result *result) {
 dte_result_t dte_draw(uint32_t now, const struct dte_canvas *canvas) {
   if (!canvas || !canvas->pixels)
     return last_status = DTE_STATUS_INVALID_ARGUMENT;
-  if (canvas->abi_version != DTE_ABI_VERSION_V1_3)
+  if (canvas->abi_version != DTE_ABI_VERSION_V1_4)
     return last_status = DTE_STATUS_UNSUPPORTED_ABI;
   if (canvas->struct_size < DTE_CANVAS_REQUIRED_SIZE)
     return last_status = DTE_STATUS_STRUCT_TOO_SMALL;
@@ -377,12 +384,16 @@ int dte_render(uint32_t now) {
     result.dirty_count=1;
     result.dirty[0]=(struct dte_rect){0,0,(uint16_t)width,(uint16_t)height};
   }
-  int coherent=(result.flags&DTE_RENDER_CONTINUOUS)!=0;
-  uint32_t candidates[18]={0};
-  for(unsigned i=0;i<result.dirty_count;i++){
-    const struct dte_rect *r=&result.dirty[i];
-    struct dte_dirty_rect dirty={r->x,r->y,r->width,r->height};
-    dte_mark_rect_tiles(candidates,width,height,&dirty);
+  int continuous=(result.flags&DTE_RENDER_CONTINUOUS)!=0;
+  int full_scene=dte_selected_theme.render_type==DTE_THEME_RENDER_FULL_SCENE_ONLY;
+  int coherent=preview_backend==DTE_BACKEND_COHERENT_STRIP&&continuous;
+  if(preview_backend!=DTE_BACKEND_FULL_FRAMEBUFFER&&full_scene){
+    last_status=DTE_STATUS_INVALID_ARGUMENT;return 0;
+  }
+  if(preview_backend==DTE_BACKEND_FULL_FRAMEBUFFER&&
+     (preview_force||full_scene||continuous)&&result.dirty_count){
+    result.dirty_count=1;
+    result.dirty[0]=(struct dte_rect){0,0,(uint16_t)width,(uint16_t)height};
   }
   if(coherent&&result.dirty_count>1){
     int left=width,top=height,right=0,bottom=0;
@@ -395,14 +406,22 @@ int dte_render(uint32_t now) {
     result.dirty_count=1;
     result.dirty[0]=(struct dte_rect){left,top,right-left,bottom-top};
   }
-  uint32_t changed[18];
-  preview_transfer_bytes=preview_draw_calls=preview_filter_pixels=0;
+  uint32_t changed[DTE_TILE_ROWS_MAX],candidates[DTE_TILE_ROWS_MAX]={0};
+  for(unsigned i=0;i<result.dirty_count;i++){
+    const struct dte_rect *r=&result.dirty[i];
+    struct dte_dirty_rect dirty={r->x,r->y,r->width,r->height};
+    dte_mark_rect_tiles(candidates,width,height,&dirty);
+  }
+  preview_transfer_bytes=preview_draw_calls=preview_write_calls=preview_filter_pixels=0;
   preview_dirty_rects=result.dirty_count;
   for (unsigned i = 0; i < result.dirty_count; i++) {
     const struct dte_rect *r = &result.dirty[i];
-    int rows=preview_strip_pixels/r->width;
-    rows=(rows/16)*16;
-    if(rows<1)rows=1;
+    int rows=r->height;
+    if(preview_backend!=DTE_BACKEND_FULL_FRAMEBUFFER){
+      rows=preview_strip_pixels/r->width;
+      rows=(rows/16)*16;
+      if(rows<1)rows=1;
+    }
     for(int y=r->y;y<r->y+r->height;y+=rows){
       int h=rows;if(y+h>r->y+r->height)h=r->y+r->height-y;
       struct dte_canvas canvas = DTE_CANVAS_INIT;
@@ -418,22 +437,50 @@ int dte_render(uint32_t now) {
       dte_filter_set_corner_radius(preview_filter_corner_radius);
       preview_filter_pixels+=dte_filter_apply((uint8_t)preview_filter,&canvas);
       preview_draw_calls++;
-      for(int i=0;i<18;i++)changed[i]=0;
+      if(preview_backend==DTE_BACKEND_FULL_FRAMEBUFFER){
+        int tx0=r->x/16,tx1=(r->x+r->width-1)/16;
+        int ty0=y/16,ty1=(y+h-1)/16;
+        for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++)
+          candidates[ty]|=1u<<tx;
+        continue;
+      }
+      for(int i=0;i<DTE_TILE_ROWS_MAX;i++)changed[i]=0;
       int tx0=r->x/16,tx1=(r->x+r->width-1)/16,ty0=y/16,ty1=(y+h-1)/16;
       for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++){
         uint32_t hash=dte_hash_rgb565_tile(preview_pixels,width,0,0,tx*16,ty*16,
                                            width,height);
-        int index=ty*18+tx;
+        int index=ty*DTE_TILE_COLS_MAX+tx;
         if(preview_force||preview_tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         preview_tile_hash[index]=hash;
       }
-      if(coherent){preview_transfer_bytes+=(uint32_t)r->width*h*2u;continue;}
+      if(coherent){preview_transfer_bytes+=(uint32_t)r->width*h*2u;
+        preview_write_calls++;continue;}
       struct dte_dirty_rect sent;
       while(dte_next_dirty_rect(changed,width,height,&sent)){
-        struct dte_dirty_rect strip={r->x,y,r->width,h},clipped;
-        if(dte_intersect_dirty_rect(&sent,&strip,&clipped))
-          preview_transfer_bytes+=(uint32_t)clipped.width*clipped.height*2u;
+        preview_transfer_bytes+=(uint32_t)sent.width*sent.height*2u;
+        preview_write_calls++;
       }
+    }
+  }
+  if(preview_backend==DTE_BACKEND_FULL_FRAMEBUFFER){
+    for(int i=0;i<DTE_TILE_ROWS_MAX;i++)changed[i]=0;
+    int ncols=(width+15)/16,nrows=(height+15)/16;
+    uint32_t valid=ncols==32?UINT32_MAX:(1u<<ncols)-1u;
+    if(preview_force)for(int ty=0;ty<nrows;ty++)candidates[ty]=valid;
+    for(int ty=0;ty<nrows;ty++)for(int tx=0;tx<ncols;tx++){
+      if(!(candidates[ty]&(1u<<tx)))continue;
+      uint32_t hash=2166136261u;int x0=tx*16,y0=ty*16;
+      int x1=x0+16>width?width:x0+16,y1=y0+16>height?height:y0+16;
+      for(int yy=y0;yy<y1;yy++)for(int xx=x0;xx<x1;xx++)
+        hash=(hash^preview_pixels[yy*width+xx])*16777619u;
+      int index=ty*DTE_TILE_COLS_MAX+tx;
+      if(preview_force||preview_tile_hash[index]!=hash)changed[ty]|=1u<<tx;
+      preview_tile_hash[index]=hash;
+    }
+    struct dte_dirty_rect sent;
+    while(dte_next_dirty_rect(changed,width,height,&sent)){
+      preview_transfer_bytes+=(uint32_t)sent.width*sent.height*2u;
+      preview_write_calls++;
     }
   }
   preview_force=0;
@@ -464,9 +511,21 @@ int dte_preview_set_filter_corner_radius(int radius){
   return preview_filter_corner_radius;
 }
 int dte_preview_filter_corner_radius(void){return preview_filter_corner_radius;}
+int dte_preview_set_backend(int backend){
+  if(backend<(int)DTE_BACKEND_FULL_FRAMEBUFFER||
+     backend>(int)DTE_BACKEND_DIRTY_REGION)
+    return DTE_STATUS_INVALID_ARGUMENT;
+  if(backend!=DTE_BACKEND_FULL_FRAMEBUFFER&&
+     dte_selected_theme.render_type==DTE_THEME_RENDER_FULL_SCENE_ONLY)
+    return DTE_STATUS_INVALID_ARGUMENT;
+  if(preview_backend!=backend){preview_backend=backend;preview_force=1;}
+  return preview_backend;
+}
+int dte_preview_backend(void){return preview_backend;}
 uint32_t dte_preview_transfer_bytes(void){return preview_transfer_bytes;}
 uint32_t dte_preview_dirty_rects(void){return preview_dirty_rects;}
 uint32_t dte_preview_draw_calls(void){return preview_draw_calls;}
+uint32_t dte_preview_write_calls(void){return preview_write_calls;}
 uint32_t dte_hash(void) {
   uint32_t hash = 2166136261u;
   for (int i = 0; i < width * height; i++) {

@@ -2,10 +2,22 @@
 
 ## Scope and version
 
-Engine 1.4.1 exposes Theme ABI `0x0103` and TRE ABI `0x0100`. It links one
+Engine 1.5.0 exposes Theme ABI `0x0104` and TRE ABI `0x0100`. It links one
 compile-time Theme and supports 280×240, 240×280 and 240×240 RGB565 scenes.
-The Theme region contract remains the bounded ABI 1.2 design; ABI 1.3 adds the
-Theme-independent TRE render core shared by firmware, native and WASM builds.
+Native/WASM builds also accept 480×480; firmware accepts 480×480 only with
+`CONFIG_ZMK_DONGLE_SCREEN_HD_480=y` and a matching display device.
+ABI 1.4 separates the Theme draw contract from framebuffer storage. Full-scene
+Themes use the default full framebuffer; region-capable Themes accept every
+valid canvas region, including the full canvas, and may use any backend.
+
+For ESP32-S3 HD firmware, `CONFIG_ZMK_DONGLE_SCREEN_HD_DOUBLE_BUFFER=y`
+requires the full-frame backend and external PSRAM. Two 480×480 RGB565 scene
+buffers (921,600 bytes total) occupy `.ext_ram.bss`. Each frame is fully drawn
+into the back scene, tile-hashed against the last presented frame, and then
+only changed rectangles are written synchronously to the display. The buffers
+swap after successful presentation. This gives an off-screen next scene but
+does not imply asynchronous SPI or an atomic panel refresh. The existing
+region and strip backends remain available at 480×480 when HD is enabled.
 
 Every cross-module structure starts with `abi_version` and `struct_size`, uses
 fixed-width integers, and defines a `*_REQUIRED_SIZE`. ABI functions return the
@@ -63,6 +75,30 @@ At 280×240 RGB565, 24 FPS and 20% dirty area, the declared model is 26,880
 bytes/frame, 645,120 bytes/s and 6.72 ms transfer time at 32 MHz (16.13% of the
 frame budget). Window commands, DMA gaps and physical-panel timing are excluded.
 
+### ABI 1.4 backend comparison
+
+One nRF52840 Radar build with otherwise identical configuration linked as
+follows. These are whole-image values from the final Zephyr map, not estimates:
+
+| Backend | Flash | RAM |
+| --- | ---: | ---: |
+| Full framebuffer (default) | 522,844 B | 252,968 B |
+| Dirty region, 4,480-pixel strip | 523,752 B | 132,264 B |
+
+The recorded table predates full-frame tile filtering and remains a historical
+ABI 1.4 baseline. The full backend now adds 1,296 B of tile hashes and a 4,096 B
+packing buffer to its 134,400 B framebuffer. It shades a continuous full-screen
+frame once, hashes the affected tiles, and sends only changed packed rectangles.
+The low-RAM backend repeats the draw callback for each strip.
+
+The automated Radar WASM backend gate at 1,000 ms produced the same RGB565 hash
+for all three backends. Its older payload numbers below are retained as a
+pre-filter baseline: full framebuffer used one draw, three DMA-safe writes and
+134,400 payload bytes; coherent strips used 12 draws,
+12 writes and 73,728 bytes; dirty regions used 10 draws, 10 writes and 25,600
+bytes. These figures demonstrate the
+tradeoff but do not replace a full-cycle device trace or physical-panel timing.
+
 ## Theme descriptor
 
 Include `zmk/dongle_theme/theme.h` and define one descriptor:
@@ -70,6 +106,7 @@ Include `zmk/dongle_theme/theme.h` and define one descriptor:
 ```c
 const struct dte_theme dte_selected_theme = DTE_THEME_INIT(
     "theme-id", DTE_THEME_CAP_GESTURE,
+    DTE_THEME_RENDER_REGION_CAPABLE,
     mount, gesture, frame, draw);
 ```
 
@@ -77,6 +114,11 @@ const struct dte_theme dte_selected_theme = DTE_THEME_INIT(
 - `gesture(kind, now)` receives normalized gestures when the capability is set.
 - `frame(snapshot, now, result)` advances state and publishes dirty rectangles.
 - `draw(snapshot, now, canvas)` shades exactly the requested scene region.
+
+`DTE_THEME_RENDER_FULL_SCENE_ONLY` permits a simpler draw callback but requires
+the full-framebuffer backend. `DTE_THEME_RENDER_REGION_CAPABLE` is a strict
+superset: its callback must accept arbitrary regions and therefore works
+unchanged when the Engine supplies the full canvas.
 
 `dte_validate_theme()` checks the required prefix and callbacks without
 mounting. `dte_init_ex()` returns a `dte_status`; `dte_last_status()` reports the
@@ -153,29 +195,29 @@ space; `origin_x` and `origin_y` map them into the region. The Engine rejects a
 wrong pixel format, invalid stride, out-of-bounds region, insufficient buffer,
 or a timestamp not prepared by `dte_frame()`.
 
-The ZMK host subdivides dirty rectangles into at most
+The low-RAM ZMK host subdivides dirty rectangles into at most
 `ZMK_DONGLE_SCREEN_STRIP_PIXELS` and synchronously passes each strip to the
-display driver. The default is 4,480 RGB565 pixels, or 8,960 bytes. Neither the
-Engine nor LVGL owns a full animation framebuffer in this strip mode.
+display driver. The default is 4,480 RGB565 pixels, or 8,960 bytes. The default
+backend instead owns one 134,400-byte framebuffer, a 4,096-byte packed transfer
+scratch and 1,296 bytes of tile hashes.
 
-Before each strip is sent, the host hashes its 16×16 RGB565 output tiles against
-the last successfully produced tile hash. Only changed tiles are packed into
-bounded display rectangles. This preserves the ABI's caller-owned strip RAM
-model while avoiding an SPI full-frame transfer merely because a Theme supplied
-a conservative damage bound. A failed write invalidates the optimization and
-forces the next presentation to cover the full scene.
+Before presentation, both dirty-region strips and the full framebuffer hash
+their 16×16 RGB565 output tiles. Only changed tiles are packed into bounded
+display rectangles. Thus a full-scene Theme may remain simple without forcing a
+134,400-byte transfer when much of the final frame is unchanged. A failed write
+invalidates the optimization and forces the next presentation to cover the full
+scene.
 
-Presentation policy follows frame semantics. Non-continuous state updates use
-tile-hash packing to minimize payload. `DTE_RENDER_CONTINUOUS` animation frames
-merge their dirty rectangles into one conservative scene region and submit its
-strips in top-to-bottom order. This avoids exposing a single animation frame as
-temporally scattered tile writes on panels without a TE/vsync signal. Themes
-still need realistic damage bounds; this policy improves coherence but cannot
-make an SPI update atomic.
+Presentation policy also follows the selected backend. Full framebuffer uses
+tile-hash packing for continuous and discrete frames. Low-RAM coherent-strip
+mode sends continuous animation in top-to-bottom strips; dirty-region mode
+minimizes payload. Themes still need realistic damage bounds, and none of these
+policies makes an SPI update atomic without TE/vsync.
 
-With `ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER`, the host retains the scene and draws
-one merged dirty bound per frame. Raster drawing uses the original tile mask
-to preserve unchanged pixels within that bound. Changed tiles are copied into
+With `ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER`, the host retains the scene and
+draws each reported region. Full-scene or continuously animated themes draw a
+whole scene. Raster drawing uses a tile mask to preserve pixels outside the
+reported damage. Changed tiles are copied into
 the 2,048-pixel transfer scratch. Initialization or a failed write forces a full
 repaint. Byte swapping occurs in scratch, not in the retained framebuffer.
 

@@ -32,11 +32,13 @@ static dte_result_t draw(const struct dte_snapshot *s, uint32_t now,
   return DTE_STATUS_OK;
 }
 const struct dte_theme dte_selected_theme =
-    DTE_THEME_INIT("test", DTE_THEME_CAP_GESTURE, mount, gesture, frame, draw);
+    DTE_THEME_INIT("test", DTE_THEME_CAP_GESTURE,
+                   DTE_THEME_RENDER_REGION_CAPABLE, mount, gesture, frame,
+                   draw);
 int main(void) {
   dte_init(280, 240);
   assert(dte_last_status() == DTE_STATUS_OK);
-  assert(dte_active_abi_version() == DTE_ABI_VERSION_V1_3);
+  assert(dte_active_abi_version() == DTE_ABI_VERSION_V1_4);
   dte_touch(180, 120, 1, 0);
   dte_touch(90, 120, 1, 40);
   dte_touch(90, 120, 0, 80);

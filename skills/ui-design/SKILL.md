@@ -1,6 +1,6 @@
 ---
 name: ui-design
-description: Design and review typography and iconography for ZMK dongle-screen themes. Use when choosing, generating, integrating, or validating fonts and glyph icons for small RGB565 displays.
+description: Design and review ZMK dongle-screen theme UI, including typography, iconography, render-contract selection and framebuffer tuning for small RGB565 displays.
 ---
 
 # Dongle-screen UI typography
@@ -45,3 +45,16 @@ Review typography in an exact-size RGB565 framebuffer before browser zoom. Check
 - Flash and RAM deltas for every newly enabled size or glyph range.
 
 Browser enlargement is useful for inspection, but it is not evidence of physical-panel legibility. Record panel validation separately when hardware is available.
+
+## Rendering contract and backend
+
+Every ABI 1.4 theme must choose its drawing contract deliberately:
+
+- `DTE_THEME_RENDER_FULL_SCENE_ONLY` is the simple default for theme code. Its draw callback may assume a full-canvas target and must use the full-framebuffer backend.
+- `DTE_THEME_RENDER_REGION_CAPABLE` promises correct drawing into every valid canvas region, including the full canvas. It therefore runs unchanged on the default full framebuffer and may also opt into coherent-strip or dirty-region backends.
+
+Choose the firmware backend separately. Prefer `CONFIG_ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER` for full-screen animation, abundant overlapping effects, or themes intended for casual reuse. Choose coherent strips when RAM is constrained but a continuous animation still needs visually coherent updates. Choose dirty regions only for sparse, independently redrawable elements when the measured SPI saving justifies the extra implementation and tuning work.
+
+For a region-capable theme, clip every pixel loop to the supplied canvas; derive scene coordinates from `origin_x` and `origin_y`; redraw background beneath moving or hidden elements; report previous bounds union current bounds; and never depend on unreported prior pixel contents. Validate arbitrary regions as well as the full-canvas case in native and WASM tests.
+
+Tune in this order: measure draw calls, rendered pixels and SPI bytes; merge overlapping continuous damage; increase strip height only within RAM and EasyDMA limits; simplify oversized moving bounds; then reduce refresh cadence for slow timelines. Do not claim a low-RAM backend is faster merely because it allocates less memory.

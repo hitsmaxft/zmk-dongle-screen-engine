@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+config HEAP_MEM_POOL_ADD_SIZE_BOARD
+    int
+    default 4096 if BOARD_ESP32S3_TOUCH_AMOLED_2_16_ESP32S3_PROCPU

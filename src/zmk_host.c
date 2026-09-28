@@ -52,15 +52,21 @@ static int backlight_percent = CONFIG_ZMK_DONGLE_SCREEN_BRIGHTNESS;
 static int startup_phase;
 static unsigned startup_attempts;
 static uint32_t deadline, last_report, frames;
-#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER)
-static uint16_t full_pixels[DTE_MAX_PIXELS] __aligned(4);
-static bool full_hash_valid;
+#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER)
+#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_HD_DOUBLE_BUFFER)
+static uint16_t frame_storage[2][DTE_MAX_PIXELS]
+    __attribute__((section(".ext_ram.bss"))) __aligned(16);
+static uint16_t *frame_pixels=frame_storage[0];
+static uint8_t front_index;
 #else
-static uint16_t
-    transfer_pixels[CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS] __aligned(4);
+static uint16_t frame_pixels[DTE_MAX_PIXELS] __aligned(4);
+#endif
+#else
+static uint16_t transfer_pixels[CONFIG_ZMK_DONGLE_SCREEN_STRIP_PIXELS]
+    __aligned(4);
 #endif
 static uint16_t packed_pixels[2048] __aligned(4);
-static uint32_t tile_hash[18 * 18];
+static uint32_t tile_hash[DTE_TILE_ROWS_MAX * DTE_TILE_COLS_MAX];
 static void frame_work_cb(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(frame_work, frame_work_cb);
 static void set_backlight(int percent) {
@@ -69,7 +75,9 @@ static void set_backlight(int percent) {
   if (device_is_ready(led))
     led_set_brightness(led, DT_NODE_CHILD_IDX(DT_NODELABEL(disp_bl)), percent);
 #else
-  ARG_UNUSED(percent);
+  const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+  if (device_is_ready(disp))
+    (void)display_set_brightness(disp, (uint8_t)(CLAMP(percent, 0, 100) * 255 / 100));
 #endif
 }
 void dte_host_backlight_set(int percent) {
@@ -125,118 +133,30 @@ static void direct_lvgl_flush(lv_display_t *display, const lv_area_t *area,
   LOG_WRN("suppressed LVGL flush while direct renderer owns the panel");
   lv_display_flush_ready(display);
 }
-#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER)
-static bool draw_full_region(uint32_t now,const struct dte_dirty_rect *rect,
-                             const uint32_t *damage){
-  int width=dte_width();
-  struct dte_canvas target=DTE_CANVAS_INIT;
-  target.scene_width=width;target.scene_height=dte_height();
-  target.origin_x=rect->x;target.origin_y=rect->y;
-  target.width=rect->width;target.height=rect->height;
-  target.stride_pixels=width;
-  target.buffer_size=((uint32_t)(rect->height-1)*width+rect->width)*2u;
-  target.pixels=&full_pixels[rect->y*width+rect->x];
-  dtr_set_canvas_damage(damage,(dte_height()+15)/16);
-  uint32_t draw_started=k_cycle_get_32();
-  dte_result_t status=dte_draw(now,&target);
-  dtr_set_canvas_damage(NULL,0);
-  uint32_t draw_elapsed=k_cyc_to_us_floor32(k_cycle_get_32()-draw_started);
-  region_us+=draw_elapsed;region_count++;
-  if(draw_elapsed>region_max_us)region_max_us=draw_elapsed;
-  if(status!=DTE_STATUS_OK)return false;
-  if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT))
-    dte_filter_apply(DTE_FILTER_CRT,&target);
-  return true;
+/* The display driver owns each synchronous buffer only until display_write()
+ * returns. ABI 1.4 defaults to a full framebuffer; low-RAM region backends are
+ * retained for themes that explicitly implement the region-capable contract. */
+static uint32_t hash_tile(const uint16_t *pixels,int stride,int base_x,int base_y,
+                          int tile_x,int tile_y,int width,int height){
+  uint32_t hash=2166136261u;
+  int w=MIN(16,width-tile_x),h=MIN(16,height-tile_y);
+  for(int y=0;y<h;y++)for(int x=0;x<w;x++)
+    hash=(hash^pixels[(tile_y-base_y+y)*stride+tile_x-base_x+x])*16777619u;
+  return hash;
 }
-static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
-  if(!transfer_failed&&!frame->dirty_count&&
-     !(frame->flags&DTE_RENDER_FRAME_CHANGED))return false;
-  bool force=transfer_failed||!full_hash_valid;
-  const struct device *disp=DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-  transfer_failed=false;
-  uint32_t candidates[18]={0},changed[18]={0};
-  struct dte_dirty_rect full={0,0,dte_width(),dte_height()};
-  if(force||!frame->dirty_count){
-    if(!draw_full_region(now,&full,NULL)){
-      transfer_failed=true;LOG_ERR("theme full render failed");return false;
-    }
-    dte_mark_rect_tiles(candidates,dte_width(),dte_height(),&full);
-  }else{
-    int left=dte_width(),top=dte_height(),right=0,bottom=0;
-    for(unsigned i=0;i<frame->dirty_count;i++){
-      const struct dte_rect *rect=&frame->dirty[i];
-      if(rect->x<left)left=rect->x;
-      if(rect->y<top)top=rect->y;
-      if(rect->x+rect->width>right)right=rect->x+rect->width;
-      if(rect->y+rect->height>bottom)bottom=rect->y+rect->height;
-    }
-    for(unsigned i=0;i<frame->dirty_count;i++){
-      const struct dte_rect *rect=&frame->dirty[i];
-      struct dte_dirty_rect dirty={rect->x,rect->y,rect->width,rect->height};
-      dte_mark_rect_tiles(candidates,dte_width(),dte_height(),&dirty);
-    }
-    struct dte_dirty_rect region={left,top,right-left,bottom-top};
-    if(!draw_full_region(now,&region,candidates)){
-      transfer_failed=true;full_hash_valid=false;
-      LOG_ERR("theme incremental render failed");return false;
-    }
-  }
-  int ncols=(dte_width()+15)/16,nrows=(dte_height()+15)/16;
-  uint32_t hash_started=k_cycle_get_32();
-  uint32_t candidate_count=0,changed_count=0;
-  for(int ty=0;ty<nrows;ty++)for(int tx=0;tx<ncols;tx++){
-    if(!(candidates[ty]&(1u<<tx)))continue;
-    candidate_count++;
-    uint32_t hash=dte_hash_rgb565_tile(full_pixels,dte_width(),0,0,tx*16,ty*16,
-                                       dte_width(),dte_height());
-    int index=ty*18+tx;
-    if(force||tile_hash[index]!=hash){changed[ty]|=1u<<tx;changed_count++;}
-    tile_hash[index]=hash;
-  }
-  uint32_t hash_elapsed=k_cyc_to_us_floor32(k_cycle_get_32()-hash_started);
-  hash_us+=hash_elapsed;hash_count++;
-  if(hash_elapsed>hash_max_us)hash_max_us=hash_elapsed;
-  candidate_tiles+=candidate_count;changed_tiles+=changed_count;
-  bool sent=false;
-  uint32_t pack_elapsed=0;
-  struct dte_dirty_rect rect;
-  while(dte_next_dirty_rect(changed,dte_width(),dte_height(),&rect)){
-    int n=rect.width*rect.height;
-    if(n>(int)(sizeof(packed_pixels)/sizeof(packed_pixels[0]))){
-      transfer_failed=true;LOG_ERR("full-frame tile rectangle exceeds scratch");break;
-    }
-    int stride=dte_width();
-    uint32_t pack_started=k_cycle_get_32();
-    uint16_t *dst=packed_pixels;
-    const uint16_t *row=full_pixels+rect.y*stride+rect.x;
-    for(int y=0;y<rect.height;y++,row+=stride)
-      for(int x=0;x<rect.width;x++){
-        uint16_t pixel=row[x];
-        *dst++=IS_ENABLED(CONFIG_LV_COLOR_16_SWAP)?__builtin_bswap16(pixel):pixel;
-      }
-    pack_elapsed+=k_cyc_to_us_floor32(k_cycle_get_32()-pack_started);
-    struct display_buffer_descriptor desc={.width=rect.width,.height=rect.height,
-      .pitch=rect.width,.buf_size=(size_t)n*2u};
-    uint32_t write_started=k_cycle_get_32();
-    int rc=display_write(disp,rect.x,rect.y,&desc,packed_pixels);
-    display_us+=k_cyc_to_us_floor32(k_cycle_get_32()-write_started);
-    display_count++;present_writes++;present_bytes+=(uint32_t)n*2u;
-    if(rc){transfer_failed=true;LOG_ERR("display full tiles failed: %d",rc);break;}
-    sent=true;
-  }
-  pack_us+=pack_elapsed;pack_count++;
-  if(pack_elapsed>pack_max_us)pack_max_us=pack_elapsed;
-  full_hash_valid=!transfer_failed;
-  return sent&&!transfer_failed;
-}
-#else
-/* ABI 1.2+ renders final pixels directly into a bounded strip. The display
- * driver owns each synchronous buffer only until display_write() returns. */
+
+#if !IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER)
 static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
   bool sent = false;
   bool force=transfer_failed;
-  bool coherent=(frame->flags&DTE_RENDER_CONTINUOUS)!=0;
+  bool coherent=IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_BACKEND_COHERENT_STRIP)&&
+                (frame->flags&DTE_RENDER_CONTINUOUS)!=0;
+  if(dte_theme_render_type()!=DTE_THEME_RENDER_REGION_CAPABLE){
+    transfer_failed=true;
+    LOG_ERR("theme requires full framebuffer backend");
+    return false;
+  }
   if (transfer_failed) {
     frame->flags |= DTE_RENDER_FRAME_CHANGED;
     frame->dirty_count = 1;
@@ -288,13 +208,13 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
       }
       if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT))
         dte_filter_apply(DTE_FILTER_CRT,&target);
-      uint32_t changed[18]={0};
+      uint32_t changed[DTE_TILE_ROWS_MAX]={0};
       int tx0=rect->x/16,tx1=(rect->x+rect->width-1)/16;
       int ty0=y/16,ty1=(y+h-1)/16;
       for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++){
-        uint32_t hash=dte_hash_rgb565_tile(transfer_pixels,rect->width,rect->x,y,
-                                           tx*16,ty*16,rect->width,h);
-        int index=ty*18+tx;
+        uint32_t hash=hash_tile(transfer_pixels,rect->width,rect->x,y,
+                                tx*16,ty*16,dte_width(),dte_height());
+        int index=ty*DTE_TILE_COLS_MAX+tx;
         if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
         tile_hash[index]=hash;
       }
@@ -340,6 +260,92 @@ static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
   }
   return sent && !transfer_failed;
 }
+#else
+static bool present_frame(uint32_t now, struct dte_frame_result *frame) {
+  const struct device *disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+  bool full_scene=dte_theme_render_type()==DTE_THEME_RENDER_FULL_SCENE_ONLY;
+  bool continuous=(frame->flags&DTE_RENDER_CONTINUOUS)!=0;
+  bool force=transfer_failed;
+  bool sent=false;
+  uint32_t candidates[DTE_TILE_ROWS_MAX]={0},changed[DTE_TILE_ROWS_MAX]={0};
+#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_HD_DOUBLE_BUFFER)
+  uint8_t next_index=front_index^1u;
+  frame_pixels=frame_storage[next_index];
+  if(frame->dirty_count){
+    frame->flags|=DTE_RENDER_FRAME_CHANGED;
+    frame->dirty_count=1;
+    frame->dirty[0]=(struct dte_rect){0,0,dte_width(),dte_height()};
+  }
+#endif
+  if(force||((full_scene||continuous)&&frame->dirty_count)){
+    frame->flags|=DTE_RENDER_FRAME_CHANGED;
+    frame->dirty_count=1;
+    frame->dirty[0]=(struct dte_rect){0,0,dte_width(),dte_height()};
+  }
+  transfer_failed=false;
+  for(unsigned i=0;i<frame->dirty_count;i++){
+    const struct dte_rect *rect=&frame->dirty[i];
+    struct dte_canvas target=DTE_CANVAS_INIT;
+    target.scene_width=dte_width();target.scene_height=dte_height();
+    target.origin_x=rect->x;target.origin_y=rect->y;
+    target.width=rect->width;target.height=rect->height;
+    target.stride_pixels=dte_width();
+    target.buffer_size=((uint32_t)(rect->height-1)*dte_width()+rect->width)*2u;
+    target.pixels=frame_pixels+rect->y*dte_width()+rect->x;
+    int tx0=rect->x/16,tx1=(rect->x+rect->width-1)/16;
+    int ty0=rect->y/16,ty1=(rect->y+rect->height-1)/16;
+    for(int ty=ty0;ty<=ty1;ty++)for(int tx=tx0;tx<=tx1;tx++)
+      candidates[ty]|=1u<<tx;
+    dtr_set_canvas_damage(candidates,(dte_height()+15)/16);
+    uint32_t draw_started=k_cycle_get_32();
+    dte_result_t draw_status=dte_draw(now,&target);
+    dtr_set_canvas_damage(NULL,0);
+    uint32_t draw_elapsed=k_cyc_to_us_floor32(k_cycle_get_32()-draw_started);
+    region_us+=draw_elapsed;region_count++;
+    if(draw_elapsed>region_max_us)region_max_us=draw_elapsed;
+    if(draw_status!=DTE_STATUS_OK){
+      transfer_failed=true;LOG_ERR("theme framebuffer render failed");break;
+    }
+    if(IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_FILTER_CRT))
+      dte_filter_apply(DTE_FILTER_CRT,&target);
+  }
+  if(transfer_failed)return false;
+  int ncols=(dte_width()+15)/16,nrows=(dte_height()+15)/16;
+  uint32_t valid=ncols==32?UINT32_MAX:(1u<<ncols)-1u;
+  if(force)for(int ty=0;ty<nrows;ty++)candidates[ty]=valid;
+  for(int ty=0;ty<nrows;ty++)for(int tx=0;tx<ncols;tx++){
+    if(!(candidates[ty]&(1u<<tx)))continue;
+    uint32_t hash=hash_tile(frame_pixels,dte_width(),0,0,tx*16,ty*16,
+                            dte_width(),dte_height());
+    int index=ty*DTE_TILE_COLS_MAX+tx;
+    if(force||tile_hash[index]!=hash)changed[ty]|=1u<<tx;
+    tile_hash[index]=hash;
+  }
+  struct dte_dirty_rect rect;
+  while(dte_next_dirty_rect(changed,dte_width(),dte_height(),&rect)){
+    int pixel_count=rect.width*rect.height;
+    if(pixel_count>(int)(sizeof(packed_pixels)/sizeof(packed_pixels[0]))){
+      transfer_failed=true;LOG_ERR("framebuffer tile rectangle exceeds scratch");break;
+    }
+    int n=0;
+    for(int y=0;y<rect.height;y++)for(int x=0;x<rect.width;x++)
+      packed_pixels[n++]=frame_pixels[(rect.y+y)*dte_width()+rect.x+x];
+    if(IS_ENABLED(CONFIG_LV_COLOR_16_SWAP))for(int i=0;i<n;i++)
+      packed_pixels[i]=__builtin_bswap16(packed_pixels[i]);
+    struct display_buffer_descriptor desc={.width=rect.width,.height=rect.height,
+      .pitch=rect.width,.buf_size=(size_t)n*2u};
+    uint32_t write_started=k_cycle_get_32();
+    int rc=display_write(disp,rect.x,rect.y,&desc,packed_pixels);
+    display_us+=k_cyc_to_us_floor32(k_cycle_get_32()-write_started);
+    display_count++;present_writes++;present_bytes+=(uint32_t)n*2u;
+    if(rc){transfer_failed=true;LOG_ERR("display framebuffer tiles failed: %d",rc);break;}
+    sent=true;
+  }
+#if IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_HD_DOUBLE_BUFFER)
+  if(!transfer_failed)front_index=next_index;
+#endif
+  return sent&&!transfer_failed;
+}
 #endif
 static void frame_work_cb(struct k_work *work) {
   ARG_UNUSED(work);
@@ -351,7 +357,11 @@ static void frame_work_cb(struct k_work *work) {
   k_spinlock_key_t key = k_spin_lock(&state_lock);
   int sl = bl, sr = br, sd = bd, sw = wpm, sm = mods;
   k_spin_unlock(&state_lock, key);
-  dte_set_state(sw, layer, ep.transport, zmk_ble_active_profile_index(), sm, sl,
+  int profile=0;
+#if IS_ENABLED(CONFIG_ZMK_BLE)
+  profile=zmk_ble_active_profile_index();
+#endif
+  dte_set_state(sw, layer, ep.transport,profile,sm, sl,
                 sr, sd, -1, -1);
   if ((int32_t)(now - stats_deadline) >= 0) {
     published_fps_x10 = measured_fps_x10;
@@ -438,6 +448,7 @@ static void frame_work_cb(struct k_work *work) {
 }
 static int status_listener(const zmk_event_t *eh) {
   k_spinlock_key_t key = k_spin_lock(&state_lock);
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
   const struct zmk_peripheral_battery_state_changed *b =
       as_zmk_peripheral_battery_state_changed(eh);
   if (b) {
@@ -446,12 +457,15 @@ static int status_listener(const zmk_event_t *eh) {
     else if (b->source == 1)
       br = b->state_of_charge;
   }
+#endif
   const struct zmk_wpm_state_changed *w = as_zmk_wpm_state_changed(eh);
   if (w)
     wpm = w->state;
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
   const struct zmk_battery_state_changed *d = as_zmk_battery_state_changed(eh);
   if (d)
     bd = d->state_of_charge;
+#endif
   /* ZMK currently declares modifiers_state_changed without raising it. Mirror
    * the working display-widget pattern: use every keycode transition as the
    * wake-up signal, then project the canonical aggregate HID modifier state. */
@@ -471,8 +485,10 @@ static int status_listener(const zmk_event_t *eh) {
   return ZMK_EV_EVENT_BUBBLE;
 }
 ZMK_LISTENER(theme_state, status_listener);
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
 ZMK_SUBSCRIPTION(theme_state, zmk_peripheral_battery_state_changed);
 ZMK_SUBSCRIPTION(theme_state, zmk_battery_state_changed);
+#endif
 ZMK_SUBSCRIPTION(theme_state, zmk_layer_state_changed);
 ZMK_SUBSCRIPTION(theme_state, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(theme_state, zmk_modifiers_state_changed);
@@ -709,7 +725,9 @@ lv_obj_t *zmk_display_status_screen(void) {
   lv_obj_set_style_border_width(root, 0, 0);
   if (!((caps.x_resolution == 280 && caps.y_resolution == 240) ||
         (caps.x_resolution == 240 &&
-         (caps.y_resolution == 240 || caps.y_resolution == 280)))) {
+         (caps.y_resolution == 240 || caps.y_resolution == 280)) ||
+        (IS_ENABLED(CONFIG_ZMK_DONGLE_SCREEN_HD_480) &&
+         caps.x_resolution == 480 && caps.y_resolution == 480))) {
     LOG_ERR("unsupported display size %ux%u", caps.x_resolution,
             caps.y_resolution);
     return root;

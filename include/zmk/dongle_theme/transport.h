@@ -66,7 +66,7 @@ static inline uint32_t dte_hash_rgb565_tile(const uint16_t *pixels, int stride,
 
 /* Convert 16px damage rows into at most capacity scene rectangles. Unlike the
  * legacy packet iterator below, rectangles are not constrained by a transport
- * scratch size: the ABI 1.3 host subdivides them into strips later. If the
+ * scratch size: an ABI 1.4 low-RAM host subdivides them into strips later. If the
  * exact one-row runs do not fit, progressively group adjacent tile rows and
  * take their union. This trades a bounded amount of conservative redraw for
  * never collapsing an annulus or sparse HUD update to the whole scene. */

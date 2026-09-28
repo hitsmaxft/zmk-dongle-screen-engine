@@ -22,6 +22,13 @@ Save each preview in a new directory. Inspect raw framebuffer PNGs for pixel
 quality; use browser tests for controls, localization and responsive layout.
 CSS-scaled screenshots do not prove framebuffer accuracy.
 
+For ABI 1.4, declare `DTE_THEME_RENDER_FULL_SCENE_ONLY` or
+`DTE_THEME_RENDER_REGION_CAPABLE` in the Theme descriptor. The full-framebuffer
+backend is the default. Select coherent strips or dirty regions only for a
+region-capable Theme, and compare native/WASM pixels across all three modes.
+The ESP32-S3 AMOLED target supports a 480×480 scene and optional double
+buffering in PSRAM; verify its final Zephyr map and display timing separately.
+
 ## Compare reference pixels
 
 `compare_reference.py` compares artwork with PNG/PPM exported from native or

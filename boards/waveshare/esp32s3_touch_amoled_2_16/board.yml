@@ -1,0 +1,6 @@
+board:
+  name: esp32s3_touch_amoled_2_16
+  full_name: Waveshare ESP32-S3 Touch AMOLED 2.16
+  vendor: waveshare
+  socs:
+  - name: esp32s3
