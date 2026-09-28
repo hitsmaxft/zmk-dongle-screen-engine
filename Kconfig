@@ -1,3 +1,11 @@
+config CO5300_QSPI
+    bool "CO5300 QSPI AMOLED display"
+    default y if DT_HAS_WAVESHARE_CO5300_QSPI_ENABLED
+    depends on SPI && GPIO && SPI_EXTENDED_MODES
+    depends on DT_HAS_WAVESHARE_CO5300_QSPI_ENABLED
+    help
+      RGB565 AMOLED panel used by the Waveshare ESP32-S3 Touch AMOLED 2.16.
+
 config ZMK_DONGLE_SCREEN_ENGINE
     bool "Dongle Theme engine"
     default y if SHIELD_DONGLE_SCREEN_HOST
@@ -41,22 +49,52 @@ config ZMK_DONGLE_SCREEN_BRIGHTNESS
     depends on ZMK_DONGLE_SCREEN_ENGINE
 
 config ZMK_DONGLE_SCREEN_DIRECT_RGB565
-    bool "Send ABI 1.2+ RGB565 regions directly through the display driver"
+    bool "Send ABI 1.4 RGB565 output directly through the display driver"
     default y
     depends on ZMK_DONGLE_SCREEN_ENGINE
     help
-      Required by Theme ABI 1.2 and later. LVGL retains screen lifecycle ownership while
-      the Engine renders bounded strips directly through the display driver.
+      Required by Theme ABI 1.4. LVGL retains screen lifecycle ownership while
+      the Engine presents either a full framebuffer or bounded regions directly.
+
+config ZMK_DONGLE_SCREEN_HD_480
+    bool "Enable 480x480 AMOLED scene capacity"
+    depends on ZMK_DONGLE_SCREEN_ENGINE
+    help
+      Allows a 480x480 Theme and 30x30 damage tiles. A full RGB565 frame
+      occupies 460800 bytes; use external PSRAM for the HD full-frame backend.
+
+config ZMK_DONGLE_SCREEN_HD_DOUBLE_BUFFER
+    bool "Two 480x480 RGB565 scene buffers in ESP32-S3 PSRAM"
+    depends on ZMK_DONGLE_SCREEN_HD_480 && ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER
+    depends on SOC_SERIES_ESP32S3 && ESP_SPIRAM
+    help
+      Places two 460800-byte scenes in external PSRAM. The Theme renders an
+      entire next scene off-screen, then tile hashing transfers only changed
+      RGB565 regions. The display write path remains synchronous.
+
+choice ZMK_DONGLE_SCREEN_RENDER_BACKEND
+    prompt "Theme rendering backend"
+    default ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER
+    depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
+
+config ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER
+    bool "Full framebuffer (default, simplest and fastest for full-screen animation)"
+
+config ZMK_DONGLE_SCREEN_BACKEND_COHERENT_STRIP
+    bool "Coherent strips (lower RAM, redraws each strip)"
+
+config ZMK_DONGLE_SCREEN_BACKEND_DIRTY_REGION
+    bool "Dirty regions (lowest transfer volume, most tuning)"
+
+endchoice
 
 config ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER
-    bool "Compose and present a full RGB565 framebuffer"
+    bool "Legacy full-framebuffer selection (use render backend choice)"
     default n
-    depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
+    depends on ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER
     help
-      Retain one 280x240 RGB565 frame for themes whose large moving geometry
-      needs one complete draw. The host hashes 16x16 tiles and sends only
-      changed packed rectangles. This uses 139792 bytes RAM: 134400 bytes for
-      pixels, 4096 bytes for transfer scratch and 1296 bytes for tile hashes.
+      Compatibility symbol for existing build configurations. The selected
+      render backend now controls framebuffer allocation and presentation.
 
 config ZMK_DONGLE_SCREEN_FILTER_CRT
     bool "Apply the lightweight CRT glass filter"
@@ -80,7 +118,7 @@ config ZMK_DONGLE_SCREEN_STRIP_PIXELS
     int "Maximum RGB565 pixels in the firmware render strip"
     default 4480
     range 4480 31360
-    depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
+    depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565 && !ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER
     help
       Bounds static render RAM independently of display area. 4480 pixels are
       sixteen full rows at 280 pixels wide and require 8960 bytes. 31360
@@ -89,7 +127,7 @@ config ZMK_DONGLE_SCREEN_STRIP_PIXELS
 config ZMK_DONGLE_SCREEN_REGION_TILE_HASH
     bool "Pack changed tiles during continuous region animation"
     default n
-    depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565 && !ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER
+    depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565 && !ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER
     help
       Hash and pack changed 16x16 tiles for continuous region animation.
       This lowers payload but creates more LCD windows. Disabled mode sends
@@ -123,5 +161,5 @@ config ZMK_DONGLE_SCREEN_PACKED_RECTS
     default y
     depends on ZMK_DONGLE_SCREEN_DIRECT_RGB565
     help
-      Compatibility option retained for existing configurations. ABI 1.2+
-      always renders exact dirty rectangles into the bounded strip buffer.
+      Compatibility option retained for existing configurations. The ABI 1.4
+      dirty-region backend packs exact changed rectangles from its strip.

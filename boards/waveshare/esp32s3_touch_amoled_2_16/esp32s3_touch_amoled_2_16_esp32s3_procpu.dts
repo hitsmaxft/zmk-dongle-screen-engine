@@ -1,0 +1,45 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/dts-v1/;
+#include <espressif/esp32s3/esp32s3_wroom_n16r8.dtsi>
+#include <espressif/partitions_0x0_amp.dtsi>
+#include "esp32s3_touch_amoled_2_16-pinctrl.dtsi"
+
+/ {
+    model = "Waveshare ESP32-S3 Touch AMOLED 2.16";
+    compatible = "waveshare,esp32-s3-touch-amoled-2.16";
+    chosen {
+        zephyr,sram = &sram0;
+        zephyr,console = &uart0;
+        zephyr,shell-uart = &uart0;
+        zephyr,flash = &flash0;
+        zephyr,code-partition = &slot0_partition;
+        zephyr,display = &co5300;
+    };
+};
+
+&gpio0 { status = "okay"; };
+&gpio1 { status = "okay"; };
+&uart0 {
+    status = "okay";
+    current-speed = <115200>;
+    pinctrl-0 = <&uart0_default>;
+    pinctrl-names = "default";
+};
+&usb_serial { status = "okay"; };
+&spi2 {
+    status = "okay";
+    pinctrl-0 = <&spim2_default>;
+    pinctrl-names = "default";
+    #address-cells = <1>;
+    #size-cells = <0>;
+    co5300: display@0 {
+        compatible = "waveshare,co5300-qspi";
+        reg = <0>;
+        status = "okay";
+        spi-max-frequency = <40000000>;
+        reset-gpios = <&gpio1 7 GPIO_ACTIVE_LOW>;
+        panel-cs-gpios = <&gpio0 12 GPIO_ACTIVE_LOW>;
+        width = <480>;
+        height = <480>;
+    };
+};

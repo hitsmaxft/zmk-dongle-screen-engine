@@ -16,7 +16,7 @@ static void gesture_theme(int32_t kind, uint32_t now) {
 }
 static dte_result_t frame_theme(const struct dte_snapshot *snapshot,
                                 uint32_t now, struct dte_frame_result *result) {
-  assert(snapshot->abi_version == DTE_ABI_VERSION_V1_3 && snapshot->wpm == 123);
+  assert(snapshot->abi_version == DTE_ABI_VERSION_V1_4 && snapshot->wpm == 123);
   frames++;
   result->flags = DTE_RENDER_FRAME_CHANGED | DTE_RENDER_DEADLINE_VALID;
   result->next_frame_at_ms = now + 250;
@@ -29,23 +29,26 @@ static dte_result_t draw_theme(const struct dte_snapshot *snapshot,
   (void)snapshot;
   (void)now;
   draws++;
-  assert(canvas->origin_x == 10 && canvas->origin_y == 20 &&
-         canvas->width == 4 && canvas->height == 3);
-  for (int y = 0; y < 3; y++)
-    for (int x = 0; x < 4; x++)
-      canvas->pixels[y * canvas->stride_pixels + x] = 0x1234;
+  for (int y = 0; y < canvas->height; y++)
+    for (int x = 0; x < canvas->width; x++) {
+      int sx = canvas->origin_x + x, sy = canvas->origin_y + y;
+      canvas->pixels[y * canvas->stride_pixels + x] =
+          sx >= 10 && sx < 14 && sy >= 20 && sy < 23 ? 0x1234 : 0;
+    }
   return DTE_STATUS_OK;
 }
 const struct dte_theme dte_selected_theme =
-    DTE_THEME_INIT("api-1.3-test", DTE_THEME_CAP_GESTURE, mount_theme,
-                   gesture_theme, frame_theme, draw_theme);
+    DTE_THEME_INIT("api-1.4-test", DTE_THEME_CAP_GESTURE,
+                   DTE_THEME_RENDER_REGION_CAPABLE, mount_theme, gesture_theme,
+                   frame_theme, draw_theme);
 
 int main(void) {
-  assert(DTE_ENGINE_VERSION_MAJOR == 1u && DTE_ENGINE_VERSION_MINOR == 4u &&
-         DTE_ENGINE_VERSION_PATCH == 1u);
-  assert(strcmp(DTE_ENGINE_VERSION_STRING, "1.4.1") == 0);
+  assert(DTE_ENGINE_VERSION_MAJOR == 1u && DTE_ENGINE_VERSION_MINOR == 5u &&
+         DTE_ENGINE_VERSION_PATCH == 0u);
+  assert(strcmp(DTE_ENGINE_VERSION_STRING, "1.5.0") == 0);
   assert(DTE_ABI_VERSION_V1_2 == 0x0102u);
   assert(DTE_ABI_VERSION_V1_3 == 0x0103u);
+  assert(DTE_ABI_VERSION_V1_4 == 0x0104u);
   assert(dte_validate_theme(&dte_selected_theme) == DTE_STATUS_OK);
   struct dte_frame_result raster_deadline = DTE_FRAME_RESULT_INIT;
   dte_frame_from_raster_deadline(&raster_deadline, 280, 240, 1234);
@@ -53,6 +56,11 @@ int main(void) {
          raster_deadline.next_frame_at_ms == 1234);
   assert(dte_init_ex(1, 1) == DTE_STATUS_UNSUPPORTED_DISPLAY);
   assert(dte_init_ex(280, 240) == DTE_STATUS_OK && mounts == 1);
+  assert(dte_theme_render_type() == DTE_THEME_RENDER_REGION_CAPABLE);
+#if !defined(__ZEPHYR__)
+  assert(dte_preview_backend() == DTE_BACKEND_FULL_FRAMEBUFFER);
+  assert(dte_preview_set_backend(0) == DTE_STATUS_INVALID_ARGUMENT);
+#endif
   struct dte_snapshot snapshot = DTE_SNAPSHOT_INIT;
   snapshot.wpm = 123;
   snapshot.battery_count = 3;
@@ -68,7 +76,7 @@ int main(void) {
   short_snapshot.data.canary = 0xa5a55a5au;
   struct dte_snapshot *short_snapshot_api =
       (struct dte_snapshot *)short_snapshot.data.prefix;
-  short_snapshot_api->abi_version = DTE_ABI_VERSION_V1_3;
+  short_snapshot_api->abi_version = DTE_ABI_VERSION_V1_4;
   short_snapshot_api->struct_size = DTE_SNAPSHOT_REQUIRED_SIZE;
   short_snapshot_api->valid_mask = DTE_SNAPSHOT_VALID_WPM;
   short_snapshot_api->wpm = 123;
@@ -106,7 +114,7 @@ int main(void) {
   short_result.data.canary = 0x5aa5a55au;
   struct dte_frame_result *short_result_api =
       (struct dte_frame_result *)short_result.data.prefix;
-  short_result_api->abi_version = DTE_ABI_VERSION_V1_3;
+  short_result_api->abi_version = DTE_ABI_VERSION_V1_4;
   short_result_api->struct_size = DTE_FRAME_RESULT_REQUIRED_SIZE;
   assert(dte_frame(2000, short_result_api) == DTE_STATUS_OK && frames == 2);
   assert(short_result_api->struct_size == DTE_FRAME_RESULT_REQUIRED_SIZE);
@@ -114,9 +122,12 @@ int main(void) {
 #if !defined(__ZEPHYR__)
   assert(dte_render(3000) == 1);
   assert(dte_preview_dirty_rects() == 1 && dte_preview_draw_calls() == 1);
-  assert(dte_preview_transfer_bytes() == 4 * 3 * 2);
+  assert(dte_preview_write_calls() > 1);
+  assert(dte_preview_transfer_bytes() == 280 * 240 * 2);
   assert(dte_render(3250) == 1);
-  assert(dte_preview_draw_calls() == 1 && dte_preview_transfer_bytes() == 0);
+  assert(dte_preview_draw_calls() == 1 &&
+         dte_preview_transfer_bytes() == 0 &&
+         dte_preview_write_calls() == 0);
 #endif
   return 0;
 }

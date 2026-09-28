@@ -1,9 +1,13 @@
 zephyr_include_directories(include)
+zephyr_library()
+zephyr_library_sources_ifdef(CONFIG_CO5300_QSPI src/drivers/co5300_qspi.c)
 if(CONFIG_ZMK_DONGLE_SCREEN_ENGINE)
+  if(CONFIG_ZMK_DONGLE_SCREEN_HD_480 AND CONFIG_ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER AND NOT CONFIG_ZMK_DONGLE_SCREEN_HD_DOUBLE_BUFFER)
+    message(FATAL_ERROR "480x480 full-frame rendering requires HD double buffering in PSRAM")
+  endif()
   if(CONFIG_SHIELD_DONGLE_SCREEN OR CONFIG_SHIELD_DONGLE_DISPLAY)
     message(FATAL_ERROR "dongle_screen_host cannot share screen ownership with dongle_screen/dongle_display")
   endif()
-  zephyr_library()
   zephyr_library_include_directories(${APPLICATION_SOURCE_DIR}/include)
   execute_process(COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/scripts/generate_raster_assets.py
     --lvgl ${ZEPHYR_LVGL_MODULE_DIR} --output ${CMAKE_CURRENT_BINARY_DIR}/dongle_raster_assets.h

@@ -1,0 +1,17 @@
+description: CO5300 QSPI AMOLED on Waveshare ESP32-S3 Touch AMOLED 2.16
+compatible: "waveshare,co5300-qspi"
+on-bus: spi
+include: spi-device.yaml
+properties:
+  reset-gpios:
+    type: phandle-array
+    required: true
+  panel-cs-gpios:
+    type: phandle-array
+    required: true
+  width:
+    type: int
+    const: 480
+  height:
+    type: int
+    const: 480

@@ -10,6 +10,8 @@ Current release: **1.4.1**; Theme ABI: **1.3** (`0x0103`); TRE ABI: **1.0**
 
 Version 1.4.1 does not change either ABI. Existing ABI 1.3 themes remain source
 and binary-contract compatible. See the [release notes](docs/releases.md).
+This development branch targets Engine 1.5.0 and Theme ABI 1.4 (`0x0104`);
+it requires themes to declare their rendering contract explicitly.
 
 This repository contains the Engine, reusable renderer, preview shell and a
 minimal example. Product themes, artwork and generated theme atlases belong in
@@ -27,8 +29,8 @@ downstream theme modules.
   hints and landscape-space touch origins.
 - RGB565 drawing, fixed spatial Bayer dithering, sprites, bitmap text, metallic
   rings, retained damage and scoped circular exclusion.
-- Bounded strip rendering or an optional retained full framebuffer with tile
-  hashing and packed display writes.
+- A full framebuffer by default, with coherent-strip and dirty-region modes
+  for region-capable themes. ESP32-S3 HD builds can use two PSRAM framebuffers.
 - Native and WASM builds from the same C renderer, plus a localized interactive
   preview and an nRF52840 transport-budget model.
 
@@ -61,8 +63,8 @@ remain compatibility and effects helpers. Details are in the
 
 ## Display and transport contract
 
-Supported logical scenes are 280×240, 240×280 and 240×240 RGB565. The host can
-render into bounded strips or retain one full 280×240 framebuffer. Dirty
+Supported logical scenes are 280×240, 240×280, 240×240 and (with HD enabled)
+480×480 RGB565. The host can render into bounded strips or retain a framebuffer. Dirty
 rectangles are conservative; changed output tiles are hashed before transfer.
 
 Configured FPS is a scheduling target, not measured panel FPS. SPI command
@@ -97,7 +99,7 @@ descriptor:
 
 ```c
 const struct dte_theme dte_selected_theme = DTE_THEME_INIT(
-    "theme-id", DTE_THEME_CAP_GESTURE,
+    "theme-id", DTE_THEME_CAP_GESTURE, DTE_THEME_RENDER_REGION_CAPABLE,
     mount, gesture, frame, draw);
 ```
 
@@ -110,7 +112,8 @@ Useful firmware options include:
 - `ZMK_DONGLE_SCREEN_FPS`
 - `ZMK_DONGLE_SCREEN_BRIGHTNESS`
 - `ZMK_DONGLE_SCREEN_STRIP_PIXELS`
-- `ZMK_DONGLE_SCREEN_FULL_FRAMEBUFFER`
+- `ZMK_DONGLE_SCREEN_BACKEND_FULL_FRAMEBUFFER`
+- `ZMK_DONGLE_SCREEN_HD_DOUBLE_BUFFER` (ESP32-S3 with PSRAM)
 - `ZMK_DONGLE_SCREEN_OPTIMIZE_SPEED`
 - `ZMK_DONGLE_SCREEN_MAX_THROUGHPUT`
 
